@@ -18,7 +18,14 @@ class Player {
 		}
 
 		// game loop
+		
 		while (true) {
+			int weakestFactory = -1;
+			int weakestFactoryCount = int.MaxValue;
+
+			int myBestFactory = -1;
+			int myBestFactoryCount = -1;
+
 			int entityCount = int.Parse(Console.ReadLine()); // the number of entities (e.g. factories and troops)
 			for (int i = 0; i < entityCount; i++) {
 				inputs = Console.ReadLine().Split(' ');
@@ -29,14 +36,27 @@ class Player {
 				int arg3 = int.Parse(inputs[4]);
 				int arg4 = int.Parse(inputs[5]);
 				int arg5 = int.Parse(inputs[6]);
-			}
 
+				if (entityType == "FACTORY") {
+					if (arg1 == 1) {
+						if (arg2 > myBestFactoryCount) {
+							myBestFactory = entityId;
+							myBestFactoryCount = arg2;
+						}
+					} else {
+						if (arg2 < weakestFactoryCount) {
+							weakestFactory = entityId;
+							weakestFactoryCount = arg2;
+						}
+					}
+				}
+			}
 			// Write an action using Console.WriteLine()
 			// To debug: Console.Error.WriteLine("Debug messages...");
 
-
+			Console.WriteLine(string.Format("MOVE {0} {1} {2}", myBestFactory, weakestFactory, myBestFactoryCount-1));
 			// Any valid action, such as "WAIT" or "MOVE source destination cyborgs"
-			Console.WriteLine("WAIT");
+			//Console.WriteLine("WAIT");
 		}
 	}
 }
