@@ -78,25 +78,42 @@ class Player {
 			}
 			game = new GameState(entities);
 
+			CommandBuilder action = new CommandBuilder();
 			// Write an action using Console.WriteLine()
 			// To debug: Console.Error.WriteLine("Debug messages...");
-			if (weakestFactory == -1) {
-				// Any valid action, such as "WAIT" or "MOVE source destination cyborgs"
-				Console.WriteLine("WAIT");
-			} else {
-				if (Math.Min(myBestFactoryCount - 1, 4) < 0) {
-					Console.WriteLine("WAIT");
-				} else {
-					Console.WriteLine(string.Format("MOVE {0} {1} {2}", myBestFactory, mostProductiveUnownedFactory, Math.Min(myBestFactoryCount - 1, 4)));
+			if (weakestFactory != -1) { //If there is no factory to conquer, just wait. We're doing good
+				if (Math.Min(myBestFactoryCount - 1, 4) > 0) {
+					//Console.WriteLine(string.Format("MOVE {0} {1} {2}", myBestFactory, mostProductiveUnownedFactory, Math.Min(myBestFactoryCount - 1, 4)));
+					action.AppendMove(myBestFactory, mostProductiveUnownedFactory, Math.Min(myBestFactoryCount - 1, 4));
 				}
 			}
+
+			Console.WriteLine(action.Result);
 		}
 	}
 }
 #region Game Data Structures
 public enum Players {
 	Neutral = 0, Me = 1, Opponent = 2
-}
+}	  
+
+public class CommandBuilder {
+					  
+	public string Result { get; private set; }
+
+	public CommandBuilder() {
+		Result = "WAIT";	
+	}
+									 
+	//public void AppendMove(Factory start, Factory target, int count) {
+	//	Result += string.Format("MOVE {0} {1} {2};", start.EntityId, target.EntityId, count); 		
+	//}
+
+	public void AppendMove(int startId, int targetId, int count) {
+		Result += string.Format(";MOVE {0} {1} {2}", startId, targetId, count);
+	}
+
+} 
 
 public class GameState {
 
@@ -116,6 +133,9 @@ public abstract class Entity {
 	public int EntityId { get; private set; }
 	public Players Owner { get; private set; }
 
+	public static implicit operator int(Entity value) {
+		return value.EntityId;
+	}
 
 	public Entity(int entityId, int owner) {
 		this.EntityId = entityId;
