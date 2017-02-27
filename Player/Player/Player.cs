@@ -20,7 +20,6 @@ class Player {
 			int distance = int.Parse(inputs[2]);
 			Tuple<int, int, int> myTuple = Tuple.Create(factory1, factory2, distance);
 			factoriesDistances.Add(myTuple);
-			Console.Error.WriteLine(myTuple);
 		}
 		  
 		// game loop
@@ -79,10 +78,9 @@ class Player {
 					weakestFactory = unownedFactory.EntityId;
 					weakestFactoryCount = unownedFactory.CyborgCount;
 				}
-				Console.Error.WriteLine(myBestFactory+" "+unownedFactory.EntityId);
-
-
-
+				if(factoriesDistances.FirstOrDefault(t => t.Item1 == Math.Min(myBestFactory, unownedFactory) && t.Item2 == Math.Max(myBestFactory, unownedFactory)) == null) {
+					continue;
+				}
 				if (unownedFactory.Production >= bestUnownedFactoryProduction 
 				&& factoriesDistances.First(t => t.Item1 == Math.Min(myBestFactory, unownedFactory) && t.Item2 == Math.Max(myBestFactory, unownedFactory)).Item3 < bestUnownedFactoryDistance) 
 				{
@@ -98,8 +96,8 @@ class Player {
 			}
 			// Write an action using Console.WriteLine()
 			// To debug: Console.Error.WriteLine("Debug messages...");
-			if (weakestFactory != -1) { //If there is no factory to conquer, just wait. We're doing good
-				if(weakestFactoryCount >= 10) {
+			if (mostProductiveUnownedFactory != -1) { //If there is no factory to conquer, just wait. We're doing good
+				if(bestUnownedFactoryCyborgCount >= 10 && game.Factories.First(f=>f==mostProductiveUnownedFactory).Owner == Players.Opponent) {
 					action.AppendBomb(myBestFactory, mostProductiveUnownedFactory);
 				}
 				else if(Math.Min(myBestFactoryCount - 1, 4) > 0) {
@@ -150,7 +148,7 @@ public class CommandBuilder {
 	}
 
 	public void AppendBomb(int startId, int targetId) {
-		Result += string.Format(";MOVE {0} {1}", startId, targetId);
+		Result += string.Format(";BOMB {0} {1}", startId, targetId);
 	}
 
 } 
