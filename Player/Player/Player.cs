@@ -8,6 +8,8 @@ using System.Diagnostics;
 
 class Player {
 	static void Main(string[] args) {
+
+		List<Tuple<int, int, int>> factoriesDistances = new List<Tuple<int, int, int>>();
 		string[] inputs;
 		int factoryCount = int.Parse(Console.ReadLine()); // the number of factories
 		int linkCount = int.Parse(Console.ReadLine()); // the number of links between factories
@@ -16,20 +18,23 @@ class Player {
 			int factory1 = int.Parse(inputs[0]);
 			int factory2 = int.Parse(inputs[1]);
 			int distance = int.Parse(inputs[2]);
+			Tuple<int, int, int> myTuple = Tuple.Create(factory1, factory2, distance);
+			factoriesDistances.Add(myTuple);
+			Console.Error.WriteLine(myTuple);
 		}
-
+		  
 		// game loop
-
 		while (true) {
 			GameState game = null;
 			List<Entity> entities = new List<Entity>();
 
 			int weakestFactory = -1;
 			int weakestFactoryCount = int.MaxValue;
-
+			
 			int mostProductiveUnownedFactory = -1;
 			int bestUnownedFactoryProduction = -1;
 			int bestUnownedFactoryCyborgCount = int.MaxValue;
+			int bestUnownedFactoryDistance = int.MaxValue;
 
 			int myBestFactory = -1;
 			int myBestFactoryCount = -1;
@@ -48,41 +53,56 @@ class Player {
 				if (entityType == "FACTORY") {
 					Factory factory = new Factory(entityId, owner, arg2, arg3);
 					entities.Add(factory);
-
-					if (owner == 1) {
-						if (arg2 > myBestFactoryCount) {
-							myBestFactory = entityId;
-							myBestFactoryCount = arg2;
-						}
-					} else {
-						if (arg2 < weakestFactoryCount) {
-							weakestFactory = entityId;
-							weakestFactoryCount = arg2;
-						}
-						if (arg3 >= bestUnownedFactoryProduction) {
-							mostProductiveUnownedFactory = entityId;
-							bestUnownedFactoryProduction = arg3;
-							bestUnownedFactoryCyborgCount = arg2;
-							if (arg3 == bestUnownedFactoryProduction && arg2 < bestUnownedFactoryCyborgCount) {
-								mostProductiveUnownedFactory = entityId;
-								bestUnownedFactoryProduction = arg3;
-								bestUnownedFactoryCyborgCount = arg2;
-							}
-						}
-					}
 				}
 				if (entityType == "TROOP") {
 					Troops troops = new Troops(entityId, owner, (Factory)entities.First(e => e.EntityId == arg2), (Factory)entities.First(e => e.EntityId == arg3), arg4, arg5);
 					entities.Add(troops);
 				}
+				if(entityType == "BOMB") {
+					Bomb bomb = new Bomb(entityId, owner, (Factory)entities.First(e => e.EntityId == arg2), (Factory)entities.FirstOrDefault(e => e.EntityId == arg3), arg4);
+					entities.Add(bomb);
+				}
 			}
 			game = new GameState(entities);
 
 			CommandBuilder action = new CommandBuilder();
+
+			foreach(var ownedFactory in game.Factories.Where(f=>f.Owner == Players.Me)) {
+				if (ownedFactory.CyborgCount > myBestFactoryCount) {
+					myBestFactory = ownedFactory.EntityId;
+					myBestFactoryCount = ownedFactory.CyborgCount;
+				}
+			}
+
+			foreach (var unownedFactory in game.Factories.Where(f => f.Owner != Players.Me)) {
+				if (unownedFactory.CyborgCount < weakestFactoryCount) {
+					weakestFactory = unownedFactory.EntityId;
+					weakestFactoryCount = unownedFactory.CyborgCount;
+				}
+				Console.Error.WriteLine(myBestFactory+" "+unownedFactory.EntityId);
+
+
+
+				if (unownedFactory.Production >= bestUnownedFactoryProduction 
+				&& factoriesDistances.First(t => t.Item1 == Math.Min(myBestFactory, unownedFactory) && t.Item2 == Math.Max(myBestFactory, unownedFactory)).Item3 < bestUnownedFactoryDistance) 
+				{
+					mostProductiveUnownedFactory = unownedFactory.EntityId;
+					bestUnownedFactoryProduction = unownedFactory.Production;
+					bestUnownedFactoryCyborgCount = unownedFactory.CyborgCount;
+					if (unownedFactory.Production == bestUnownedFactoryProduction && unownedFactory.CyborgCount < bestUnownedFactoryCyborgCount) {
+						mostProductiveUnownedFactory = unownedFactory.EntityId;
+						bestUnownedFactoryProduction = unownedFactory.Production;
+						bestUnownedFactoryCyborgCount = unownedFactory.CyborgCount;
+					}
+				}
+			}
 			// Write an action using Console.WriteLine()
 			// To debug: Console.Error.WriteLine("Debug messages...");
 			if (weakestFactory != -1) { //If there is no factory to conquer, just wait. We're doing good
-				if (Math.Min(myBestFactoryCount - 1, 4) > 0) {
+				if(weakestFactoryCount >= 10) {
+					action.AppendBomb(myBestFactory, mostProductiveUnownedFactory);
+				}
+				else if(Math.Min(myBestFactoryCount - 1, 4) > 0) {
 					//Console.WriteLine(string.Format("MOVE {0} {1} {2}", myBestFactory, mostProductiveUnownedFactory, Math.Min(myBestFactoryCount - 1, 4)));
 					action.AppendMove(myBestFactory, mostProductiveUnownedFactory, Math.Min(myBestFactoryCount - 1, 4));
 				}
@@ -93,6 +113,22 @@ class Player {
 	}
 }
 #region Game Data Structures
+public class Odinoo {
+
+	public string Think(GameState game) {
+		CommandBuilder action = new CommandBuilder();
+		//if (weakestFactory != -1) { //If there is no factory to conquer, just wait. We're doing good
+		//	if (Math.Min(myBestFactoryCount - 1, 4) > 0) {
+		//		//Console.WriteLine(string.Format("MOVE {0} {1} {2}", myBestFactory, mostProductiveUnownedFactory, Math.Min(myBestFactoryCount - 1, 4)));
+		//		action.AppendMove(myBestFactory, mostProductiveUnownedFactory, Math.Min(myBestFactoryCount - 1, 4));
+		//	}
+		//}
+
+		return action.Result;
+	}
+
+}
+
 public enum Players {
 	Neutral = 0, Me = 1, Opponent = 2
 }	  
@@ -111,6 +147,10 @@ public class CommandBuilder {
 
 	public void AppendMove(int startId, int targetId, int count) {
 		Result += string.Format(";MOVE {0} {1} {2}", startId, targetId, count);
+	}
+
+	public void AppendBomb(int startId, int targetId) {
+		Result += string.Format(";MOVE {0} {1}", startId, targetId);
 	}
 
 } 
@@ -159,16 +199,31 @@ public class Factory : Entity {
 
 public class Troops : Entity {
 
-	public Factory Home { get; private set; }
+	public Factory Start { get; private set; }
 	public Factory Target { get; private set; }
 	public int TroopCount { get; private set; }
 	public int Eta { get; private set; }
 
-	public Troops(int entityId, int owner, Factory home, Factory target, int troopCount, int eta) : base(entityId, owner) {
-		this.Home = home;
+	public Troops(int entityId, int owner, Factory start, Factory target, int troopCount, int eta) : base(entityId, owner) {
+		this.Start = start;
 		this.Target = target;
 		this.TroopCount = troopCount;
 		this.Eta = eta;
 	}
+}
+
+public class Bomb : Entity {
+
+	public Factory Start { get; private set; }
+	public Factory Target { get; private set; }
+	public int Eta { get; private set; }
+
+
+	public Bomb(int entityId, int owner, Factory start, Factory target, int eta) : base(entityId, owner) {
+		this.Start = start;
+		this.Target = target;
+		this.Eta = eta;
+	}
+
 }
 #endregion
