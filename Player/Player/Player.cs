@@ -21,7 +21,8 @@ class Player {
 			Tuple<int, int, int> myTuple = Tuple.Create(factory1, factory2, distance);
 			factoriesDistances.Add(myTuple);
 		}
-		  
+
+		bool firstTurn = true;
 		// game loop
 		while (true) {
 			GameState game = null;
@@ -96,6 +97,27 @@ class Player {
 			}
 			// Write an action using Console.WriteLine()
 			// To debug: Console.Error.WriteLine("Debug messages...");
+			if (firstTurn) {
+				int troopsAvailable = myBestFactoryCount - 1;
+				var factoriesToAttack = game.Factories
+					.Where(f => f.Owner != Players.Me)
+					//.Where(f => f.Production <= 2)
+					.OrderBy(f => factoriesDistances
+						.First(d => d.Item1 == Math.Min(myBestFactory, f) && d.Item2 == Math.Max(myBestFactory, f)).Item3
+					).ThenBy(f => f.CyborgCount);
+
+				foreach (var factory in factoriesToAttack) {
+					action.AppendMove(myBestFactory, factory, factory.CyborgCount + 1);
+					troopsAvailable = troopsAvailable - factory.CyborgCount + 1;
+					if(troopsAvailable <= 0) {
+						break;
+					}
+				}
+
+
+				firstTurn = false;
+			}
+
 			if (mostProductiveUnownedFactory != -1) { //If there is no factory to conquer, just wait. We're doing good
 				if(bestUnownedFactoryCyborgCount >= 10 && game.Factories.First(f=>f==mostProductiveUnownedFactory).Owner == Players.Opponent) {
 					action.AppendBomb(myBestFactory, mostProductiveUnownedFactory);
