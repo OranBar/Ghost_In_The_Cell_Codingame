@@ -13,11 +13,17 @@ class Player {
 		string[] inputs;
 		int factoryCount = int.Parse(Console.ReadLine()); // the number of factories
 		int linkCount = int.Parse(Console.ReadLine()); // the number of links between factories
+
+		Graph map = new Graph(factoryCount);
+
 		for (int i = 0; i < linkCount; i++) {
 			inputs = Console.ReadLine().Split(' ');
 			int factory1 = int.Parse(inputs[0]);
 			int factory2 = int.Parse(inputs[1]);
 			int distance = int.Parse(inputs[2]);
+
+			map.AddConnection(factory1, factory2, distance);
+
 			Tuple<int, int, int> myTuple = Tuple.Create(factory1, factory2, distance);
 			factoriesDistances.Add(myTuple);
 		}
@@ -63,11 +69,14 @@ class Player {
 					entities.Add(bomb);
 				}
 			}
-			game = new GameState(entities);
+			game = new GameState(map, entities);
 
 			CommandBuilder action = new CommandBuilder();
 
-			foreach(var ownedFactory in game.Factories.Where(f=>f.Owner == Players.Me)) {
+			foreach(var ownedFactory in game.Factories.Where(f=>f.Owner == Players.Me).OrderBy(f => f.Production) ) {
+				if(ownedFactory.CyborgCount >= 20 && ownedFactory.Production < 3) {
+					action.AppendPowerup(ownedFactory.EntityId);
+				}
 				if (ownedFactory.CyborgCount > myBestFactoryCount) {
 					myBestFactory = ownedFactory.EntityId;
 					myBestFactoryCount = ownedFactory.CyborgCount;
@@ -82,16 +91,17 @@ class Player {
 				if(factoriesDistances.FirstOrDefault(t => t.Item1 == Math.Min(myBestFactory, unownedFactory) && t.Item2 == Math.Max(myBestFactory, unownedFactory)) == null) {
 					continue;
 				}
-				if (unownedFactory.Production >= bestUnownedFactoryProduction 
-				&& factoriesDistances.First(t => t.Item1 == Math.Min(myBestFactory, unownedFactory) && t.Item2 == Math.Max(myBestFactory, unownedFactory)).Item3 < bestUnownedFactoryDistance) 
-				{
-					mostProductiveUnownedFactory = unownedFactory.EntityId;
-					bestUnownedFactoryProduction = unownedFactory.Production;
-					bestUnownedFactoryCyborgCount = unownedFactory.CyborgCount;
-					if (unownedFactory.Production == bestUnownedFactoryProduction && unownedFactory.CyborgCount < bestUnownedFactoryCyborgCount) {
+				if (unownedFactory.Production >= bestUnownedFactoryProduction ){
+					int distanceToFactory = factoriesDistances.First(t => t.Item1 == Math.Min(myBestFactory, unownedFactory) && t.Item2 == Math.Max(myBestFactory, unownedFactory)).Item3;
+					if (distanceToFactory < bestUnownedFactoryDistance && distanceToFactory < 9) {
 						mostProductiveUnownedFactory = unownedFactory.EntityId;
 						bestUnownedFactoryProduction = unownedFactory.Production;
 						bestUnownedFactoryCyborgCount = unownedFactory.CyborgCount;
+						if (unownedFactory.Production == bestUnownedFactoryProduction && unownedFactory.CyborgCount < bestUnownedFactoryCyborgCount) {
+							mostProductiveUnownedFactory = unownedFactory.EntityId;
+							bestUnownedFactoryProduction = unownedFactory.Production;
+							bestUnownedFactoryCyborgCount = unownedFactory.CyborgCount;
+						}
 					}
 				}
 			}
@@ -101,7 +111,7 @@ class Player {
 				int troopsAvailable = myBestFactoryCount - 1;
 				var factoriesToAttack = game.Factories
 					.Where(f => f.Owner != Players.Me)
-					//.Where(f => f.Production <= 2)
+					.Where(f => f.Production >= 1)
 					.OrderBy(f => factoriesDistances
 						.First(d => d.Item1 == Math.Min(myBestFactory, f) && d.Item2 == Math.Max(myBestFactory, f)).Item3
 					).ThenBy(f => f.CyborgCount);
@@ -149,6 +159,31 @@ public class Odinoo {
 
 }
 
+public class Graph {
+
+	private int[][] adjacencyMatrix;
+	private int noOfNodes;
+
+	public int this[int x, int y] {
+		get { return adjacencyMatrix[x][y]; }
+		private set { adjacencyMatrix[x][y] = adjacencyMatrix[y][x] = value; }
+	}
+
+	public Graph(int noOfNodes) {
+		this.noOfNodes = noOfNodes;
+		adjacencyMatrix = new int[noOfNodes][];
+		for (int i = 0; i < adjacencyMatrix.Length; i++) { adjacencyMatrix[i] = new int[noOfNodes]; }
+	}
+
+	public void AddConnection(int node1, int node2, int cost) {
+		Debug.Assert(node1 < noOfNodes);
+		Debug.Assert(node2 < noOfNodes);
+		Debug.Assert(cost > 0);
+
+		adjacencyMatrix[node1][node2] = adjacencyMatrix[node2][node1] = cost;
+	}
+}
+
 public enum Players {
 	Neutral = 0, Me = 1, Opponent = 2
 }	  
@@ -173,6 +208,10 @@ public class CommandBuilder {
 		Result += string.Format(";BOMB {0} {1}", startId, targetId);
 	}
 
+	public void AppendPowerup(int factoryId) {
+		Result += ";INC " + factoryId;		
+	}
+
 } 
 
 public class GameState {
@@ -180,19 +219,56 @@ public class GameState {
 	public List<Entity> Entities { get; private set; }
 	public List<Factory> Factories { get; private set; }
 	public List<Troops> Troops { get; private set; }
+	public Graph MapGraph { get; private set; }
 
-	public GameState(List<Entity> entities) {
+	public GameState(Graph mapGraph, List<Entity> entities) {
+		this.MapGraph = mapGraph;
 		this.Entities = entities;
 		this.Factories = entities.Where(e => e is Factory).Cast<Factory>().ToList();
 		this.Troops = entities.Where(e => e is Troops).Cast<Troops>().ToList();
 	}
+
+	public List<Factory> GetFactoriesOf(Players owner) {
+		return Factories.Where(f=>f.Owner == owner).ToList();
+	}
+
+	public List<Factory> GetUnownedFactories(Players owner) {
+		return Factories.Where(f => f.Owner != owner).ToList();
+	}
+
+	public GameState AdvanceInputless(int noOfTurns) {
+		return AdvanceInputless_Listed(noOfTurns).Last();
+	}
+
+	public List<GameState> AdvanceInputless_Listed(int noOfTurns) {
+		List<GameState> result = new List<GameState>();
+		for(int i=0; i<noOfTurns; i++) {
+			result.Add(AdvanceInputlessStep());
+		}
+		return result;
+
+	}
+
+	private GameState AdvanceInputlessStep() {
+
+		//Move existing troops and bombs
+		//Execute user orders
+		//Produce new cyborgs in all factories
+		//Solve battles
+		//Make the bombs explode
+		//Check end conditions
+
+
+		return null;
+	}
+
 }
 
 public abstract class Entity {
 
 	public int EntityId { get; private set; }
 	public Players Owner { get; private set; }
-
+	
 	public static implicit operator int(Entity value) {
 		return value.EntityId;
 	}
@@ -201,6 +277,18 @@ public abstract class Entity {
 		this.EntityId = entityId;
 		this.Owner = (Players)owner;
 	}
+}
+
+public struct PredictedState {
+
+	public Players owner;
+	public int cyborgCount;
+
+	public PredictedState(Players owner, int cyborgCount) {
+		this.owner = owner;
+		this.cyborgCount = cyborgCount;			
+	}
+
 }
 
 public class Factory : Entity {
@@ -215,6 +303,38 @@ public class Factory : Entity {
 		this.CyborgCount = cyborgCount;
 		this.Production = production;
 	}
+	
+
+	//public PredictedState FuturePredictedState(GameState game) {
+	//	int enemyIncomingTroops = game.Troops.Where(t1 => t1.Owner == Players.Opponent).Where(t2 => t2.Target == this.EntityId).Select(t3 => t3.TroopCount).Sum();
+	//	int alliedIncomingTroops = game.Troops.Where(t1 => t1.Owner == Players.Me).Where(t2 => t2.Target == this.EntityId).Select(t3 => t3.TroopCount).Sum();
+
+	//	if (Owner == Players.Neutral) {
+	//		if (CyborgCount > enemyIncomingTroops + alliedIncomingTroops) {
+	//			return new PredictedState(Players.Neutral, CyborgCount - enemyIncomingTroops - alliedIncomingTroops);
+	//		} 
+	//	}
+
+	//	int maxEta = GetMaxIncomingTroopEta(game);
+
+	//	for (int i=0; i<maxEta; i++) {
+
+	//	}
+		
+	//	return 0;
+	//}
+
+	//public List<Troops> GetLastTroopsIncoming(GameState game) {
+	//	return game.Troops.Where(t=>t.Eta == GetMaxIncomingTroopEta(game)).ToList();
+	//}
+
+	//public int GetMaxIncomingTroopEta(GameState game) {
+	//	return GetIncomingTroops(game).Max(t => t.Eta);
+	//}
+
+	//public List<Troops> GetIncomingTroops(GameState game) {
+	//	return game.Troops.Where(t => t.Target == this.EntityId).ToList();
+	//}
 }
 
 public class Troops : Entity {
@@ -247,3 +367,4 @@ public class Bomb : Entity {
 
 }
 #endregion
+		  
