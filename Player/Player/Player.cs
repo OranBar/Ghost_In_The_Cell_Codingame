@@ -85,7 +85,7 @@ public class Odinoo {
 	private int myBombsCount = 2;
 
 	public Odinoo() {
-		SwitchStrategy(new IStrategy[] { new S_Defender(), new S_Neutral_Conquerer(), new S_Macro() });
+		SwitchStrategy(new IStrategy[] { new S_Defender(), new S_Neutral_Conquerer(), new S_Macro(), new S_Swarmer() });
 	}
 
 	public void Conqueror_FirstTurn(GameState game, ref CommandBuilder action) {
@@ -212,10 +212,10 @@ public class S_Macro : IStrategy {
 		foreach(Factory lowCountFactory in factoriesNotAtFullProduction) {
 			int supportTroopsCount = 0;
 
-			List<Factory> myFactoriesSorted = game.GetFactoriesOf(Players.Me)
+			List<Factory> myFactoriesSorted = virtualGameState.GetFactoriesOf(Players.Me)
 				.Where(f3 => f3.Production == 3)
 				.Where(f2 => f2.GetVirtualCyborgCount(virtualGameState) >= 2)
-				.OrderByDescending(f1 => f1.GetDistanceToClosestFactory(game, Players.Opponent)).ToList();
+				.OrderByDescending(f1 => f1.GetDistanceToClosestFactory(virtualGameState, Players.Opponent)).ToList();
 
 			foreach(Factory supportingFactory in myFactoriesSorted) {
 				action.AppendMove(supportingFactory, lowCountFactory, supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2);
@@ -264,6 +264,31 @@ public class S_Neutral_Conquerer : IStrategy {
 	}
 
 }
+
+public class S_Swarmer : IStrategy {
+
+	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
+		GameState virtualGame = new GameState(game);
+
+		Factory weakestEnemyFactory = virtualGame.GetFactoriesOf(Players.Opponent)
+			.OrderBy(f1 => f1.GetVirtualCyborgCount(virtualGame) + f1.GetDistanceToClosestFactory(virtualGame, Players.Me) * f1.Production)
+			.FirstOrDefault();
+
+		List<Factory> factoriesReadyToAttack = virtualGame.GetFactoriesOf(Players.Me).Where(f1 => f1.GetVirtualCyborgCount(virtualGame) > 10).ToList();
+
+		if(weakestEnemyFactory != null) {
+			//Let's conquer this motherfucker
+			foreach(Factory currFactory in factoriesReadyToAttack) {
+				action.AppendMove(currFactory, weakestEnemyFactory, 5);
+				virtualGame = virtualGame.UpdateGame_Move(currFactory, weakestEnemyFactory, 5);
+			}
+		}
+
+		return virtualGame;
+	}
+
+}
+
 
 public class S_IDontEvenKnow : IStrategy {
 
