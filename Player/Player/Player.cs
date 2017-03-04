@@ -63,6 +63,7 @@ class Player {
 
 			game = new GameState(map, entities);
 			string result = odinoo.Think(game);
+			Console.Error.Flush();
 			Console.WriteLine(result);
 			//foreach (var ownedFactory in game.Factories.Where(f => f.Owner == Players.Me).OrderBy(f => f.Production)) {
 			//	if (ownedFactory.CyborgCount >= 20 && ownedFactory.Production < 3) {
@@ -132,13 +133,16 @@ public class Odinoo {
 
 			Conqueror_FirstTurn(game, ref action);
 			action.AppendBomb(game.GetFactoriesOf(Players.Me).First(), game.GetFactoriesOf(Players.Opponent).First());
+			Console.Error.WriteLine("Sending First Turn Bomb");
 			myBombsCount--;
 		} else {
 			if (myBombsCount > 0) {
+				Console.Error.WriteLine("Where should I throw my second bomb?");
 				//Throw the second motherfucking bomb
 				Factory secondBombTarget =
 					game.Troops
 					.Where(t1 => t1.Owner == Players.Opponent)
+					.Where(t3 => t3.Target.Owner != Players.Me)
 					.Select(t2 => game.GetFactory(t2.Target))
 					.OrderByDescending(f3 => f3.Production)
 					.ThenByDescending(f4 => f4.GetDistanceToFurthestFactory(game, Players.Me) )
@@ -146,7 +150,8 @@ public class Odinoo {
 					.FirstOrDefault();
 
 				if (secondBombTarget != null) {
-					action.AppendBomb(secondBombTarget.GetClosestFactory(game, Players.Me), secondBombTarget);
+					Console.Error.WriteLine("Sending Second Turn Bomb");
+					action.AppendBomb(secondBombTarget.GetClosestFactory(game, Players.Me), secondBombTarget.EntityId);
 					myBombsCount--;
 				}
 			}
@@ -268,6 +273,11 @@ public class S_Neutral_Conquerer : IStrategy {
 public class S_Swarmer : IStrategy {
 
 	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
+		if(game.GetProduction(Players.Me) > game.GetProduction(Players.Opponent)) {
+			return game;
+		}
+
+
 		GameState virtualGame = new GameState(game);
 
 		Factory weakestEnemyFactory = virtualGame.GetFactoriesOf(Players.Opponent)
