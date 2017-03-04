@@ -85,7 +85,7 @@ public class Odinoo {
 	private int myBombsCount = 2;
 
 	public Odinoo() {
-		SwitchStrategy(new IStrategy[] {/* new S_Defender(),*/ new S_Neutral_Conquerer()/*, new S_Macro(), new S_Swarmer()*/ });
+		SwitchStrategy(new IStrategy[] {new S_Neutral_Conquerer()});
 	}
 	 /*
 	public void Conqueror_FirstTurn(GameState game, ref CommandBuilder action) {
@@ -188,7 +188,11 @@ public class S_Defender : IStrategy {
 			//Evaquate motherfuckers. BOMB IS INCOMING
 			Factory factoryToEvacuate = virtualGameState.GetFactory(bombTargetAndEta.Item1);
 			Factory closestFactory = factoryToEvacuate.GetClosestFactory(virtualGameState, Players.Me);
-			action.AppendMove(factoryToEvacuate, closestFactory, factoryToEvacuate.CyborgCount);
+			if(closestFactory == null) {
+				//This is the short map. We don't have anywhere to run yet.
+				closestFactory = factoryToEvacuate.GetClosestFactory(virtualGameState, Players.Neutral);
+			}
+			action.AppendMove(factoryToEvacuate.EntityId, closestFactory.EntityId, factoryToEvacuate.CyborgCount);
 			virtualGameState = virtualGameState.UpdateGame_Move(factoryToEvacuate, closestFactory, factoryToEvacuate.CyborgCount);
 		}
 
@@ -255,28 +259,54 @@ public class S_Macro : IStrategy {
 		}
 		//Move troops to factories with low count to allow for Powerups in next turn(s)
 
-		//List<Factory> factoriesNotAtFullProduction = virtualGameState.GetFactoriesOf(Players.Me).Where(f1 => f1.Production < 3).Where(f2 => f2.GetVirtualCyborgCount(virtualGameState) < 40).ToList();
+		List<Factory> factoriesNotAtFullProduction = virtualGameState.GetFactoriesOf(Players.Me).Where(f1 => f1.Production < 3).Where(f2 => f2.GetVirtualCyborgCount(virtualGameState) < 40).ToList();
 
-		//foreach(Factory lowCountFactory in factoriesNotAtFullProduction) {
-		//	int supportTroopsCount = 0;
+		foreach (Factory lowCountFactory in factoriesNotAtFullProduction) {
+			int supportTroopsCount = 0;
 
-		//	List<Factory> myFactoriesSorted = virtualGameState.GetFactoriesOf(Players.Me)
-		//		.Where(f3 => f3.Production == 3)
-		//		.Where(f2 => f2.GetVirtualCyborgCount(virtualGameState) >= 2)
-		//		//.OrderByDescending(f1 => f1.GetDistanceToClosestFactory(virtualGameState, Players.Opponent))
-		//		.OrderByDescending(f1 => f1.CyborgCount)
+			List<Factory> myFactoriesSorted = virtualGameState.GetFactoriesOf(Players.Me)
+				.Where(f3 => f3.Production == 3)
+				.Where(f2 => f2.GetVirtualCyborgCount(virtualGameState) >= 2)
+				//.OrderByDescending(f1 => f1.GetDistanceToClosestFactory(virtualGameState, Players.Opponent))
+				.OrderByDescending(f1 => f1.CyborgCount)
+				.ToList();
+
+			foreach (Factory supportingFactory in myFactoriesSorted) {
+				action.AppendMove(supportingFactory, lowCountFactory, supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2);
+				virtualGameState = virtualGameState.UpdateGame_Move(supportingFactory, lowCountFactory, supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2);
+				supportTroopsCount += supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2;
+				if (supportTroopsCount >= 40) {
+					break;
+				}
+			}
+
+		}
+
+		//If all my factories have max production, and you see more neutral ones, GET THEM. They're gooood
+		//if(game.GetFactoriesOf(Players.Me).Aggregate(true, (agg, f1) => agg = agg && f1.Production==3) ) {
+		//	Console.Error.WriteLine("I'm at full production");
+		//	List<Factory> neutralFactories = virtualGameState.GetFactoriesOf(Players.Neutral)
+		//		.OrderBy(f1 => f1.GetClosestFactory(virtualGameState, Players.Me))
+		//		.ThenBy(f2 => f2.CyborgCount)
 		//		.ToList();
 
-		//	foreach(Factory supportingFactory in myFactoriesSorted) {
-		//		action.AppendMove(supportingFactory, lowCountFactory, supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2);
-		//		virtualGameState = virtualGameState.UpdateGame_Move(supportingFactory, lowCountFactory, supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2);
-		//		supportTroopsCount += supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2;
-		//		if(supportTroopsCount >= 40) {
-		//			break;
+		//	Factory neutralFactoryToAttack = neutralFactories.FirstOrDefault();
+		//	if(neutralFactoryToAttack != null) {
+		//		Console.Error.WriteLine("Trying to get "+neutralFactoryToAttack.EntityId);
+		//		Factory myFactory = virtualGameState.GetFactoriesOf(Players.Me)
+		//			.Where(f1 => f1.GetVirtualCyborgCount(virtualGameState) > 1)
+		//			.OrderBy(f2 => neutralFactoryToAttack.GetDistanceTo(virtualGameState, f2))
+		//			.FirstOrDefault();
+
+		//		if (myFactory != null) {
+		//			Console.Error.WriteLine("Attacking from " + myFactory.EntityId);
+		//			action.AppendMove(myFactory.EntityId, neutralFactoryToAttack.EntityId, 1);
+		//			virtualGameState.UpdateGame_Move(myFactory, neutralFactoryToAttack, 1); 
 		//		}
 		//	}
 
-		//}  
+		//}
+
 		return virtualGameState;
 	}  
 
