@@ -16,7 +16,7 @@ class Player {
 		int linkCount = int.Parse(Console.ReadLine()); // the number of links between factories
 
 		Graph map = new Graph(factoryCount);
-		Odinoo odinoo = new Odinoo();
+		Odinoo odinooooooooooooooooooo = new Odinoo();
 
 		for (int i = 0; i < linkCount; i++) {
 			inputs = Console.ReadLine().Split(' ');
@@ -30,8 +30,13 @@ class Player {
 		#endregion
 
 		// game loop
+		int turn = 0;
+		GameState prevGameState = null;
+		GameState currGameState = null;
 		while (true) {
-			GameState game = null;
+			turn++;
+			prevGameState = currGameState;
+			currGameState = null;
 			List<Entity> entities = new List<Entity>();
 
 			#region Read Game Info
@@ -61,9 +66,8 @@ class Player {
 			}
 			#endregion
 
-			game = new GameState(map, entities);
-			string result = odinoo.Think(game);
-			Console.Error.Flush();
+			currGameState = new GameState(map, entities, turn, prevGameState);
+			string result = odinooooooooooooooooooo.PlanNextMove(currGameState);
 			Console.WriteLine(result);	
 		}
 	}
@@ -77,13 +81,13 @@ public class Odinoo {
 
 	public List<IStrategy> strategists;
 
-	private int turn = 0;
+	//private int turn = 0;
 	private int myBombsCount = 2;
 
 	public Odinoo() {
 		SwitchStrategy(new IStrategy[] {/* new S_Defender(),*/ new S_Neutral_Conquerer()/*, new S_Macro(), new S_Swarmer()*/ });
 	}
-
+	 /*
 	public void Conqueror_FirstTurn(GameState game, ref CommandBuilder action) {
 		Factory myBestFactory = game.GetFactoriesOf(Players.Me).First();
 		Console.Error.WriteLine("My best factory " + myBestFactory.EntityId + " has " + myBestFactory.CyborgCount);
@@ -102,7 +106,7 @@ public class Odinoo {
 			}
 		}
 	}
-
+		 */
 	public void SwitchStrategy(IEnumerable<IStrategy> newStrategy) {
 		this.strategists = newStrategy.ToList();
 	}
@@ -111,11 +115,11 @@ public class Odinoo {
 		this.strategists.Add(strategy);
 	}
 
-	public string Think(GameState game) {
-		turn++;
+	public string PlanNextMove(GameState game) {
+		//turn++;
 		CommandBuilder action = new CommandBuilder();
 
-		if (turn == 1) {
+		if (game.Turn == 1) {
 			Console.Error.WriteLine("Conqueror Mode");
 
 			//Conqueror_FirstTurn(game, ref action);
@@ -128,7 +132,7 @@ public class Odinoo {
 			action.AppendBomb(game.GetFactoriesOf(Players.Me).First(), game.GetFactoriesOf(Players.Opponent).First());
 			myBombsCount--;
 
-			SwitchStrategy(new IStrategy[] { new S_Defender(), new S_Neutral_Conquerer(), /*new S_Macro(), new S_Swarmer()*/ });
+			SwitchStrategy(new IStrategy[] { new S_Defender(), new S_Neutral_Conquerer(), new S_Macro()/*, new S_Swarmer()*/ });
 
 		} else {
 			if (myBombsCount > 0) {
@@ -163,12 +167,35 @@ public class Odinoo {
 
 public class S_Defender : IStrategy {
 
+	public Tuple<int, int> bombTargetAndEta;
+
 	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
 		GameState virtualGameState = new GameState(game);
 
-		foreach(Factory myFact in virtualGameState.GetFactoriesOf(Players.Me)) {
-			int myFactVirtualCount = myFact.GetVirtualCyborgCount(virtualGameState);
+		//Avoid the first bomb
+		if (bombTargetAndEta == null) {
+			if (virtualGameState.PrevGameState?.Bombs.Where(b => b.Owner == Players.Opponent).Count() < virtualGameState.Bombs.Where(b => b.Owner == Players.Opponent).Count()) {
+				Console.Error.WriteLine("Detected Bomb Launched");
+				if (virtualGameState.GetFactoriesOf(Players.Me).Count == 1) {
+					Console.Error.WriteLine("I know for sure my opponent is bombing " + virtualGameState.GetFactoriesOf(Players.Me).First().EntityId);
+					Console.Error.WriteLine("Bomb ETA is " + virtualGameState.GetFactoriesOf(Players.Me).First().GetDistanceToClosestFactory(virtualGameState, Players.Opponent));
+					bombTargetAndEta = Tuple.Create(virtualGameState.GetFactoriesOf(Players.Me).First().EntityId, virtualGameState.GetFactoriesOf(Players.Me).First().GetDistanceToClosestFactory(virtualGameState, Players.Opponent)-1);
+				}
+			}
+		}
 
+		if(bombTargetAndEta != null && bombTargetAndEta.Item2 == virtualGameState.Turn-1) {
+			//Evaquate motherfuckers. BOMB IS INCOMING
+			Factory factoryToEvacuate = virtualGameState.GetFactory(bombTargetAndEta.Item1);
+			Factory closestFactory = factoryToEvacuate.GetClosestFactory(virtualGameState, Players.Me);
+			action.AppendMove(factoryToEvacuate, closestFactory, factoryToEvacuate.CyborgCount);
+			virtualGameState = virtualGameState.UpdateGame_Move(factoryToEvacuate, closestFactory, factoryToEvacuate.CyborgCount);
+		}
+
+
+		foreach (Factory myFact in virtualGameState.GetFactoriesOf(Players.Me)) {
+			int myFactVirtualCount = myFact.GetVirtualCyborgCount(virtualGameState);
+		
 			if (myFactVirtualCount <= 0) {
 				//This factory needs reinforcements
 				int reinforcementsNeeded = (myFactVirtualCount * -1) + 5;
@@ -177,8 +204,9 @@ public class S_Defender : IStrategy {
 				while(reinforcementsNeeded > 0) {
 
 					List<Factory> factoriesReadyToSupport = virtualGameState.GetFactoriesOf(Players.Me)
+						.Where(f4 => f4.EntityId != myFact.EntityId)
 						.Where(f1 => f1.GetVirtualCyborgCount(virtualGameState) > 1)
-						.Where(f2 => f2.CyborgCount > 2)
+						.Where(f3 => f3.CyborgCount > 2)
 						.OrderBy(f2 => virtualGameState.Graph[f2, myFact.EntityId]).ToList();
 
 					if (factoriesReadyToSupport.Contains(myFact)){
@@ -505,17 +533,25 @@ public class GameState {
 
 	public List<Entity> Entities { get; private set; }
 	public List<Factory> Factories { get; private set; }
+	public List<Bomb> Bombs { get; private set; }
 	public Graph Graph { get; private set; }
 	public List<Troops> Troops { get; private set; }
+
+	public int Turn { get; private set; }
+	public GameState PrevGameState { get; set; }
+
 	public GameState AdvanceInputless(int noOfTurns) {
 		return AdvanceInputless_Listed(noOfTurns).Last();
 	}
 
-	public GameState(Graph mapGraph, List<Entity> entities) {
+	public GameState(Graph mapGraph, List<Entity> entities, int turn, GameState prevGameState) {
 		this.Graph = mapGraph;
 		this.Entities = entities;
 		this.Factories = entities.Where(e => e is Factory).Cast<Factory>().ToList();
 		this.Troops = entities.Where(e => e is Troops).Cast<Troops>().ToList();
+		this.Bombs = entities.Where(e => e is Bomb).Cast<Bomb>().ToList();
+		this.Turn = turn;
+		this.PrevGameState = prevGameState;
 	}
 
 	public GameState(GameState game) {
@@ -523,6 +559,9 @@ public class GameState {
 		this.Entities = new List<Entity>(game.Entities);
 		this.Factories = Entities.Where(e => e is Factory).Cast<Factory>().ToList();
 		this.Troops = Entities.Where(e => e is Troops).Cast<Troops>().ToList();
+		this.Bombs = Entities.Where(e => e is Bomb).Cast<Bomb>().ToList();
+		this.Turn = game.Turn;
+		this.PrevGameState = game.PrevGameState;
 	}
 
 	public List<GameState> AdvanceInputless_Listed(int noOfTurns) {
@@ -626,7 +665,7 @@ public class Factory : Entity {
 	public int CyborgCount { get; set; }
 	public int Production { get; private set; }
 	public Factory GetClosestFactory(GameState game, Players ownerFilter) {
-		return game.Factories.Where(f1 => f1.Owner == ownerFilter).OrderBy(f2 => game.Graph[this, f2]).FirstOrDefault();
+		return game.Factories.Where(f1 => f1.Owner == ownerFilter).Where(f3 => f3 != this).OrderBy(f2 => game.Graph[this, f2]).FirstOrDefault();
 	}
 
 	public int GetDistanceTo(GameState game, Factory f) {
@@ -649,7 +688,7 @@ public class Factory : Entity {
 	}
 
 	public Factory GetFurthestFactory(GameState game, Players owner) {
-		return game.Factories.Where(f1 => f1.Owner == owner).OrderByDescending(f2 => game.Graph[this, f2]).FirstOrDefault();
+		return game.Factories.Where(f1 => f1.Owner == owner).Where(f3 => f3 != this).OrderByDescending(f2 => game.Graph[this, f2]).FirstOrDefault();
 	}
 
 	public Factory GetFurthestFactory(GameState game, List<Factory> factories) {
@@ -775,7 +814,10 @@ public class CommandBuilder {
 	}
 
 	public void AppendMove(int startId, int targetId, int count) {
-		if(count <= 0) {
+		//Console.Error.WriteLine(string.Format(" MOVE {0} {1} {2} ", startId, targetId, count));
+		//Console.Error.WriteLine(Environment.StackTrace);
+
+		if (count <= 0) {
 			Console.Error.WriteLine(string.Format("ERROR: MOVE {0} {1} {2} is invalid", startId, targetId, count));
 			Console.Error.WriteLine(Environment.StackTrace);
 			return;
