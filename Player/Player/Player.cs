@@ -118,13 +118,20 @@ public class Odinoo {
 		if (turn == 1) {
 			Console.Error.WriteLine("Conqueror Mode");
 
-			Conqueror_FirstTurn(game, ref action);
-			action.AppendBomb(game.GetFactoriesOf(Players.Me).First(), game.GetFactoriesOf(Players.Opponent).First());
+			//Conqueror_FirstTurn(game, ref action);
+			//GameState gameCopy = new GameState(game);
+			//foreach (var strategy in strategists) {
+			//	gameCopy = strategy.ExecuteStrategy(game, ref action);
+			//}
+
 			Console.Error.WriteLine("Sending First Turn Bomb");
+			action.AppendBomb(game.GetFactoriesOf(Players.Me).First(), game.GetFactoriesOf(Players.Opponent).First());
 			myBombsCount--;
+
+			SwitchStrategy(new IStrategy[] { new S_Defender(), new S_Neutral_Conquerer(), /*new S_Macro(), new S_Swarmer()*/ });
+
 		} else {
 			if (myBombsCount > 0) {
-				Console.Error.WriteLine("Where should I throw my second bomb?");
 				//Throw the second motherfucking bomb
 				Factory secondBombTarget =
 					game.Troops
@@ -137,16 +144,17 @@ public class Odinoo {
 					.FirstOrDefault();
 
 				if (secondBombTarget != null) {
-					Console.Error.WriteLine("Sending Second Turn Bomb");
+					Console.Error.WriteLine("Sending Second Bomb");
 					action.AppendBomb(secondBombTarget.GetClosestFactory(game, Players.Me), secondBombTarget.EntityId);
 					myBombsCount--;
 				}
 			}
+		}
 
-			GameState gameCopy = new GameState(game);
-			foreach (var strategy in strategists) {
-				gameCopy = strategy.ExecuteStrategy(game, ref action);
-			}
+
+		GameState gameCopy = new GameState(game);
+		foreach (var strategy in strategists) {
+			gameCopy = strategy.ExecuteStrategy(game, ref action);
 		}
 
 		return action.Result;
@@ -254,7 +262,8 @@ public class S_Neutral_Conquerer : IStrategy {
 		var factoriesToAttack = game.Factories
 			.Where(f1 => f1.Owner == Players.Neutral)
 			.Where(f3 => f3.GetVirtualCyborgCount(virtualGame) <= 0 )
-			.Where(f4 => f4.GetDistanceToClosestFactory(game, Players.Me) <= f4.GetDistanceToClosestFactory(game, Players.Opponent)) //Don't cross the map.
+			.Where(f6 => f6.Production > 0)	//Might want to take this out later. We'll see
+			.Where(f5 => f5.GetDistanceToClosestFactory(game, Players.Me) <= f5.GetDistanceToClosestFactory(game, Players.Opponent)) //Don't cross the map.
 			.OrderByDescending(f2 => f2.Production)
 			.ThenBy(f4 => f4.CyborgCount)
 			.ToList();
@@ -262,7 +271,6 @@ public class S_Neutral_Conquerer : IStrategy {
 		factoriesToAttack.ForEach(f1 => Console.Error.WriteLine("Factory " + f1.EntityId + " VCC " + f1.GetVirtualCyborgCount(virtualGame) + " CC " + f1.CyborgCount));
 
 		foreach (Factory neutralFactory in factoriesToAttack) {
-			//Console.Error.WriteLine("neutralFactory " + neutralFactory);
 
 			int troopsNeeded = neutralFactory.CyborgCount + 1;
 
@@ -274,9 +282,7 @@ public class S_Neutral_Conquerer : IStrategy {
 
 			foreach (Factory currFactory in myFactoriesReadyForOffense) {
 				if(currFactory.GetVirtualCyborgCount(virtualGame) > 1) {
-					//Console.Error.WriteLine("currFactory.GetVirtualCyborgCount(virtualGame) " + currFactory.GetVirtualCyborgCount(virtualGame));
-					//Console.Error.WriteLine("troopsNeeded " + troopsNeeded);
-
+				
 					int attackTroopsCount = Math.Min(currFactory.GetVirtualCyborgCount(virtualGame)-1, troopsNeeded);
 					action.AppendMove(currFactory, neutralFactory, attackTroopsCount);
 					virtualGame = virtualGame.UpdateGame_Move(currFactory, neutralFactory, attackTroopsCount);
