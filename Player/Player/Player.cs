@@ -24,7 +24,7 @@ class Player {
 			int factory2 = int.Parse(inputs[1]);
 			int distance = int.Parse(inputs[2]);
 
-			map.AddConnection(factory1, factory2, distance);							
+			map.AddConnection(factory1, factory2, distance);
 		}
 		/////////////////////////////////////////////////////////////////////////////////
 		#endregion
@@ -33,7 +33,7 @@ class Player {
 		while (true) {
 			GameState game = null;
 			List<Entity> entities = new List<Entity>();
-			
+
 			#region Read Game Info
 			int entityCount = int.Parse(Console.ReadLine()); // the number of entities (e.g. factories and troops)
 			for (int i = 0; i < entityCount; i++) {
@@ -72,47 +72,30 @@ class Player {
 		}
 	}
 }
-#region Game Data Structures
+#region Logic
+public interface IStrategy {
+	GameState ExecuteStrategy(GameState game, ref CommandBuilder action);
+}
+
 public class Odinoo {
 
-	public IStrategy strategy;
+	public List<IStrategy> strategists;
 
 	private int turn = 0;
+	private int myBombsCount = 2;
 
 	public Odinoo() {
-		SwitchStrategy(new S_Powerful());
-	}
-
-	public void SwitchStrategy(IStrategy newStrategy) {
-		this.strategy = newStrategy;		
-	}
-
-	public string Think(GameState game) {
-		turn++;
-		CommandBuilder action = new CommandBuilder();
-
-
-		if (turn == 1) {
-			Console.Error.WriteLine("Conqueror Mode");
-
-			Conqueror_FirstTurn(game, ref action);
-			action.AppendBomb(game.GetFactoriesOf(Players.Me).First(), game.GetFactoriesOf(Players.Opponent).First());
-		} else {
-			action = strategy.ExecuteStrategy(game, action);
-		}
-
-
-		return action.Result;
+		SwitchStrategy(new IStrategy[] { new S_Defender() });
 	}
 
 	public void Conqueror_FirstTurn(GameState game, ref CommandBuilder action) {
 		Factory myBestFactory = game.GetFactoriesOf(Players.Me).First();
-		Console.Error.WriteLine("My best factory "+myBestFactory.EntityId+" has "+myBestFactory.CyborgCount);
+		Console.Error.WriteLine("My best factory " + myBestFactory.EntityId + " has " + myBestFactory.CyborgCount);
 		int troopsAvailable = myBestFactory.CyborgCount - 1;
 		var factoriesToAttack = game.Factories
 			.Where(f1 => f1.Owner == Players.Neutral)
 			.Where(f2 => f2.Production >= 1)
-			.OrderBy(f3 => game.Graph[myBestFactory, f3] )
+			.OrderBy(f3 => game.Graph[myBestFactory, f3])
 			.ThenBy(f4 => f4.CyborgCount);
 
 		foreach (var factory in factoriesToAttack) {
@@ -124,81 +107,100 @@ public class Odinoo {
 			if (troopsAvailable <= 0) {
 				break;
 			}
-		}					
+		}
 	}
 
-}
+	public void SwitchStrategy(IEnumerable<IStrategy> newStrategy) {
+		this.strategists = newStrategy.ToList();
+	}
 
-public interface IStrategy {
-	CommandBuilder ExecuteStrategy(GameState game, CommandBuilder action);
-}
+	public void AddStrategy(IStrategy strategy) {
+		this.strategists.Add(strategy);
+	}
 
-public class S_Powerful : IStrategy {
+	public string Think(GameState game) {
+		turn++;
+		CommandBuilder action = new CommandBuilder();
 
-	public CommandBuilder ExecuteStrategy(GameState game, CommandBuilder action) {
-		List<Factory> myFactories = game.GetFactoriesOf(Players.Me).OrderByDescending(f1=>f1.CyborgCount).ToList();
-		Factory myBestFactory = myFactories.First();
+		//game.Factories
+		//	.Where(f1 => f1.Owner != Players.Neutral).ToList()
+		//	.ForEach(f2 => Console.Error.WriteLine("Factory " + f2.EntityId + " Virtual Count is " + f2.GetVirtualCyborgCoung(game)));
 
 
-		var factoriesToAttack = game.Factories
-			.Where(f1 => f1.Owner != Players.Me)
-			.Where(f2 => f2.Production >= 1)
-			.OrderBy(f4 => f4.CyborgCount)
-			.ThenBy(f3 => game.Graph[myFactories.First(), f3]);
+		if (turn == 1) {
+			Console.Error.WriteLine("Conqueror Mode");
 
-		var enemyFactory = factoriesToAttack.First();
-		//foreach (var enemyFactory in factoriesToAttack) {
-		List<Factory> myFactoriesCopy = new List<Factory>(myFactories);
-		//Factory currFactory = myFactoriesCopy.First();
-		//myFactoriesCopy.RemoveAt(0);
-		//int troopsAvailable = currFactory.CyborgCount /2;
+			Conqueror_FirstTurn(game, ref action);
+			action.AppendBomb(game.GetFactoriesOf(Players.Me).First(), game.GetFactoriesOf(Players.Opponent).First());
+			myBombsCount--;
+		} else {
+			if (myBombsCount > 0) {
+				//Throw the second motherfucking bomb
+				Factory secondBombTarget =
+					game.Troops
+					.Where(t1 => t1.Owner == Players.Opponent)
+					.Select(t2 => game.GetFactory(t2.Target))
+					.OrderByDescending(f3 => f3.Production)
+					.ThenBy(f4 => game.Graph[f4, f4.GetClosestFactory(game, Players.Me)])
+					.ThenByDescending(f5 => f5.CyborgCount)
+					.FirstOrDefault();
 
-		Console.Error.WriteLine("Should I attack Factory " + enemyFactory.EntityId);
-
-		int incomingTroopsToFactory = game.Troops.Where(t1 => t1.Target == enemyFactory).Aggregate(0, (agg, t2)=> agg + (int)t2.Owner * t2.TroopCount);
-		Console.Error.WriteLine("Incoming Trops will alter " + incomingTroopsToFactory);
-
-		int enemyFactoryCC = enemyFactory.CyborgCount + game.Graph[enemyFactory, myBestFactory] * enemyFactory.Production + incomingTroopsToFactory + 5;
-		Console.Error.WriteLine("Estimated Troops to Conquer Factory " + enemyFactory + " is " + enemyFactoryCC);
-
-		int troopsAvailable = 0;
-		CommandBuilder conquerFactoryAction = new CommandBuilder();
-		while(troopsAvailable < enemyFactoryCC) {
-			if (myFactoriesCopy.Count > 0) {
-				conquerFactoryAction.Clear();
-				break;
+				if (secondBombTarget != null) {
+					action.AppendBomb(secondBombTarget.GetClosestFactory(game, Players.Me), secondBombTarget);
+					myBombsCount--;
+				}
 			}
 
-			var myFactory = myFactoriesCopy.First();
-			myFactoriesCopy.RemoveAt(0);
-			troopsAvailable += myFactory.CyborgCount / 3 * 2;
-			conquerFactoryAction.AppendMove(myFactory, enemyFactory, myFactory.CyborgCount / 3 * 2);
+			GameState gameCopy = new GameState(game);
+			foreach (var strategy in strategists) {
+				gameCopy = strategy.ExecuteStrategy(game, ref action);
+			}
 		}
-		
-		return action.AppendActions(conquerFactoryAction);
 
-
-		//action.AppendMove(myFactory, enemyFactory, enemyFactory.CyborgCount + 1);
-		//Console.Error.WriteLine("Troops Before: " + troopsAvailable);
-		//troopsAvailable -= (enemyFactory.CyborgCount + 1);
-		//Console.Error.WriteLine("Troops Afterwards: " + troopsAvailable);
-		//if (troopsAvailable <= 0) {
-		//	break;
-		//}
-		//}
-
-		return null;
-			 
+		return action.Result;
 	}
+}
+
+public class S_Defender : IStrategy {
+
+	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
+		GameState virtualGameState = new GameState(game);
+
+		foreach(Factory myFact in virtualGameState.GetFactoriesOf(Players.Me)) {
+			int myFactVirtualCount = myFact.GetVirtualCyborgCount(virtualGameState);
+
+			if (myFactVirtualCount <= 0) {
+				//This factory needs reinforcements
+				int reinforcementsNeeded = (myFactVirtualCount * -1) + 5;
+				//Get a list of factories ready to support, ordered by proximity
+				List<Factory> factoriesReadyToSupport = virtualGameState.GetFactoriesOf(Players.Me)
+					.Where(f1 => f1.GetVirtualCyborgCount(virtualGameState) > 0)
+					.OrderBy(f2 => virtualGameState.Graph[f2, myFact.EntityId]).ToList();
+
+				while(reinforcementsNeeded > 0 && factoriesReadyToSupport.Count > 0) {
+					Factory currFactory = factoriesReadyToSupport[0];
+					factoriesReadyToSupport.RemoveAt(0);
+					int supportTroopsCount = Math.Min(reinforcementsNeeded, currFactory.GetVirtualCyborgCount(virtualGameState)); //Send your virtual cyborg count, but don't go over reinforcementsNeeded
+
+					action.AppendMove(currFactory, myFact, supportTroopsCount);
+					virtualGameState.UpdateGame_Move(currFactory, myFact, supportTroopsCount);
+					reinforcementsNeeded -= supportTroopsCount;
+				}
+			}			
+		}
+
+		return virtualGameState;
+	}
+
 }
 
 public class S_IDontEvenKnow : IStrategy {
 
-	public CommandBuilder ExecuteStrategy(GameState game, CommandBuilder action) {
+	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
 		Console.Error.WriteLine("Standard Mode");
 		//Bomb Command
 		if (game.GetFactoriesOf(Players.Me).Count() <= 0) {
-			return action;
+			return game;
 		}
 
 		var bombTarget = game.GetFactoriesOf(Players.Opponent)
@@ -232,7 +234,7 @@ public class S_IDontEvenKnow : IStrategy {
 
 		//If there is no factory to conquer, just wait. We're doing good
 		if (sortedTargets.Count == 0) {
-			return action;
+			return game;
 		}
 
 		float minStrength = sortedTargets.Min(f1 => f1.Item2);
@@ -247,87 +249,132 @@ public class S_IDontEvenKnow : IStrategy {
 		Console.Error.WriteLine("target.EntityId" + target.EntityId);
 		action.AppendMove(myBestFactory.EntityId, target.EntityId, Math.Min(Math.Max(0, myBestFactory.CyborgCount - 1), 4));
 
+		return game;
+	}
+}
+
+public class S_MacroPowerful : IStrategy {
+
+	private GameState game;
+
+	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
+		this.game = game;
+		bool shouldTryMacro = false;
+		action = PowerfulStep(action, out shouldTryMacro);
+		if (shouldTryMacro) {
+			action = MacroStep(action);
+		}
+
+		return game;
+	}
+
+	public CommandBuilder MacroStep(CommandBuilder action) {
+		return action;
+	}
+
+	public CommandBuilder PowerfulStep(CommandBuilder action, out bool result) {
+		List<Factory> enemyFactories = game.GetFactoriesOf(Players.Opponent).OrderBy(f1 => f1.CyborgCount).ToList();
+
+		foreach (Factory enemyFact in enemyFactories) {
+			int enemyTroops = enemyFact.CyborgCount;
+			List<Factory> myFactories = game.GetFactoriesOf(Players.Me).OrderByDescending(f1 => f1.CyborgCount).ToList();
+			int attackCount = 0;
+
+			for (int i = 0; i < myFactories.Count; i++) {
+				List<Factory> myAttackingFactories = myFactories.Take(i + 1).ToList();
+				attackCount = myFactories.Take(i + 1).Sum(f1 => f1.CyborgCount - 1);
+				int increasedTroopsToAccountForDistance = enemyTroops + enemyFact.Production * game.Graph[enemyFact, enemyFact.GetFurthestFactory(game, myAttackingFactories)];
+				if (attackCount >= increasedTroopsToAccountForDistance) {
+					//Let's go
+					CommandBuilder attackCmd = new CommandBuilder();
+					for (int x = 0; x < i; x++) {
+						Factory myFact = myFactories[x];
+						int attackTroopCount = myFactories[x].CyborgCount - 1;
+						attackCmd.AppendMove(myFact, enemyFact, attackTroopCount);
+						increasedTroopsToAccountForDistance -= attackTroopCount;
+						if (increasedTroopsToAccountForDistance <= 0) {
+							result = true; //Success
+							Console.Error.WriteLine("I'm really doing this ");
+							return action.AppendActions(attackCmd);
+						}
+					}
+				}
+			}
+		}
+		result = false;
+		Console.Error.WriteLine("I'm really doing this 2");
 		return action;
 	}
 }
 
 
-public class Graph {
+public class S_Powerful : IStrategy {
 
-	private int[][] adjacencyMatrix;
-	private int noOfNodes;
+	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
+		List<Factory> myFactories = game.GetFactoriesOf(Players.Me).OrderByDescending(f1 => f1.CyborgCount).ToList();
+		Factory myBestFactory = myFactories.First();
 
-	public int this[int x, int y] {
-		get { return adjacencyMatrix[x][y]; }
-		private set { adjacencyMatrix[x][y] = adjacencyMatrix[y][x] = value; }
-	}
 
-	public Graph(int noOfNodes) {
-		this.noOfNodes = noOfNodes;
-		adjacencyMatrix = new int[noOfNodes][];
-		for (int i = 0; i < adjacencyMatrix.Length; i++) { adjacencyMatrix[i] = new int[noOfNodes]; }
-	}
+		var factoriesToAttack = game.Factories
+			.Where(f1 => f1.Owner != Players.Me)
+			.Where(f2 => f2.Production >= 1)
+			.OrderBy(f4 => f4.CyborgCount)
+			.ThenBy(f3 => game.Graph[myFactories.First(), f3]);
 
-	public void AddConnection(int node1, int node2, int cost) {
-		Debug.Assert(node1 < noOfNodes);
-		Debug.Assert(node2 < noOfNodes);
-		Debug.Assert(cost > 0);
+		var enemyFactory = factoriesToAttack.First();
+		//foreach (var enemyFactory in factoriesToAttack) {
+		List<Factory> myFactoriesCopy = new List<Factory>(myFactories);
+		//Factory currFactory = myFactoriesCopy.First();
+		//myFactoriesCopy.RemoveAt(0);
+		//int troopsAvailable = currFactory.CyborgCount /2;
 
-		adjacencyMatrix[node1][node2] = adjacencyMatrix[node2][node1] = cost;
-	}
-}
+		Console.Error.WriteLine("Should I attack Factory " + enemyFactory.EntityId);
 
-public enum Players {
-	Neutral = 0, Me = 1, Opponent = -1
-}
+		int incomingTroopsToFactory = game.Troops.Where(t1 => t1.Target == enemyFactory).Aggregate(0, (agg, t2) => agg + (int)t2.Owner * t2.TroopCount);
+		Console.Error.WriteLine("Incoming Trops will alter " + incomingTroopsToFactory);
 
-public class CommandBuilder {
+		int enemyFactoryCC = enemyFactory.CyborgCount + game.Graph[enemyFactory, myBestFactory] * enemyFactory.Production + incomingTroopsToFactory + 5;
+		Console.Error.WriteLine("Estimated Troops to Conquer Factory " + enemyFactory + " is " + enemyFactoryCC);
 
-	private string _result = "";
-	public string Result {
-		get { return "WAIT" + _result; }
-	}
+		int troopsAvailable = 0;
+		CommandBuilder conquerFactoryAction = new CommandBuilder();
+		while (troopsAvailable < enemyFactoryCC) {
+			if (myFactoriesCopy.Count > 0) {
+				conquerFactoryAction.Clear();
+				break;
+			}
 
-	//public void AppendMove(Factory start, Factory target, int count) {
-	//	Result += string.Format("MOVE {0} {1} {2};", start.EntityId, target.EntityId, count); 		
-	//}
-
-	public void Clear() {
-		_result = "";
-	}
-
-	public CommandBuilder AppendActions(CommandBuilder actions) {
-		CommandBuilder resultCommandBuilder = new CommandBuilder();
-		resultCommandBuilder._result = this._result;
-		resultCommandBuilder._result = actions._result;
-		if (actions._result == "") {
-			resultCommandBuilder._result = actions._result;
-		} else {
-			resultCommandBuilder._result += ";" + actions._result;
+			var myFactory = myFactoriesCopy.First();
+			myFactoriesCopy.RemoveAt(0);
+			troopsAvailable += myFactory.CyborgCount / 3 * 2;
+			conquerFactoryAction.AppendMove(myFactory, enemyFactory, myFactory.CyborgCount / 3 * 2);
 		}
-		return resultCommandBuilder;
-	}
 
-	public void AppendMove(int startId, int targetId, int count) {
-		_result += string.Format(";MOVE {0} {1} {2}", startId, targetId, count);
-	}
+		action = action.AppendActions(conquerFactoryAction);
+		return game;
 
-	public void AppendBomb(int startId, int targetId) {
-		_result += string.Format(";BOMB {0} {1}", startId, targetId);
-	}
 
-	public void AppendPowerup(int factoryId) {
-		_result += ";INC " + factoryId;
+		//action.AppendMove(myFactory, enemyFactory, enemyFactory.CyborgCount + 1);
+		//Console.Error.WriteLine("Troops Before: " + troopsAvailable);
+		//troopsAvailable -= (enemyFactory.CyborgCount + 1);
+		//Console.Error.WriteLine("Troops Afterwards: " + troopsAvailable);
+		//if (troopsAvailable <= 0) {
+		//	break;
+		//}
+		//}
 	}
-
 }
-
+#endregion
+#region Game Data Structures
 public class GameState {
 
 	public List<Entity> Entities { get; private set; }
 	public List<Factory> Factories { get; private set; }
-	public List<Troops> Troops { get; private set; }
 	public Graph Graph { get; private set; }
+	public List<Troops> Troops { get; private set; }
+	public GameState AdvanceInputless(int noOfTurns) {
+		return AdvanceInputless_Listed(noOfTurns).Last();
+	}
 
 	public GameState(Graph mapGraph, List<Entity> entities) {
 		this.Graph = mapGraph;
@@ -336,25 +383,11 @@ public class GameState {
 		this.Troops = entities.Where(e => e is Troops).Cast<Troops>().ToList();
 	}
 
-	public Factory GetFactory(int factoryId) {
-		return Factories.First(f => f.EntityId == factoryId);
-	}
-
-	public List<Factory> GetFactoriesOf(Players owner) {
-		return Factories.Where(f => f.Owner == owner).ToList();
-	}
-
-	public List<Factory> GetUnownedFactories(Players owner) {
-		return Factories.Where(f => f.Owner != owner).ToList();
-	}
-
-	public int GetProduction(Players owner) {
-		return Factories.Where(f1 => f1.Owner == owner).Select(f2 => f2.Production).Sum();
-	}
-
-
-	public GameState AdvanceInputless(int noOfTurns) {
-		return AdvanceInputless_Listed(noOfTurns).Last();
+	public GameState(GameState game) {
+		this.Graph = game.Graph;
+		this.Entities = new List<Entity>(game.Entities);
+		this.Factories = Entities.Where(e => e is Factory).Cast<Factory>().ToList();
+		this.Troops = Entities.Where(e => e is Troops).Cast<Troops>().ToList();
 	}
 
 	public List<GameState> AdvanceInputless_Listed(int noOfTurns) {
@@ -365,6 +398,22 @@ public class GameState {
 		return result;
 
 	}
+
+	public List<Factory> GetFactoriesOf(Players owner) {
+		return Factories.Where(f => f.Owner == owner).ToList();
+	}
+
+	public Factory GetFactory(int factoryId) {
+		return Factories.First(f => f.EntityId == factoryId);
+	}
+	public int GetProduction(Players owner) {
+		return Factories.Where(f1 => f1.Owner == owner).Select(f2 => f2.Production).Sum();
+	}
+
+	public List<Factory> GetUnownedFactories(Players owner) {
+		return Factories.Where(f => f.Owner != owner).ToList();
+	}
+
 
 	private GameState AdvanceInputlessStep() {
 
@@ -379,39 +428,49 @@ public class GameState {
 		return null;
 	}
 
+	public GameState UpdateGame_Move(Factory startFactory, Factory myFact, int supportTroopsCount) {
+		GameState resultGame = new GameState(this);
+
+		Factory resultStartFact = new Factory(resultGame.GetFactory(startFactory));
+		resultStartFact.CyborgCount -= supportTroopsCount;
+		//Make the factory Switch-a-roo
+		resultGame.Factories.Remove(startFactory);
+		resultGame.Factories.Add(resultStartFact);
+
+		int maxEntityId = this.Entities.Max(e => e.EntityId);
+		Troops troops = new Troops(maxEntityId+1, (int)resultStartFact.Owner, resultStartFact, myFact, supportTroopsCount, Graph[resultStartFact, myFact]);
+		resultGame.Troops.Add(troops);
+
+		return resultGame;
+	}
 }
 
-public abstract class Entity {
+public class Graph {
 
-	public int EntityId { get; private set; }
-	public Players Owner { get; private set; }
+	private int[][] adjacencyMatrix;
+	private int noOfNodes;
 
-	public static implicit operator int(Entity value) {
-		return value.EntityId;
+	public Graph(int noOfNodes) {
+		this.noOfNodes = noOfNodes;
+		adjacencyMatrix = new int[noOfNodes][];
+		for (int i = 0; i < adjacencyMatrix.Length; i++) { adjacencyMatrix[i] = new int[noOfNodes]; }
 	}
 
-	public Entity(int entityId, int owner) {
-		this.EntityId = entityId;
-		this.Owner = (Players)owner;
+	public int this[int x, int y] {
+		get { return adjacencyMatrix[x][y]; }
+		private set { adjacencyMatrix[x][y] = adjacencyMatrix[y][x] = value; }
 	}
-}
+	public void AddConnection(int node1, int node2, int cost) {
+		Debug.Assert(node1 < noOfNodes);
+		Debug.Assert(node2 < noOfNodes);
+		Debug.Assert(cost > 0);
 
-public struct PredictedState {
-
-	public Players owner;
-	public int cyborgCount;
-
-	public PredictedState(Players owner, int cyborgCount) {
-		this.owner = owner;
-		this.cyborgCount = cyborgCount;
+		adjacencyMatrix[node1][node2] = adjacencyMatrix[node2][node1] = cost;
 	}
-
 }
 
 public class Factory : Entity {
-
-	public int CyborgCount { get; private set; }
-	public int Production { get; private set; }
+	private Factory factory;
 
 	public Factory(int entityId, int owner, int cyborgCount, int production) : base(entityId, owner) {
 		Debug.Assert(production <= 3);
@@ -421,8 +480,43 @@ public class Factory : Entity {
 		this.Production = production;
 	}
 
+	public Factory(Factory factory) : base(factory.EntityId, (int) factory.Owner) {
+		Debug.Assert(factory.Production <= 3);
+		Debug.Assert(factory.CyborgCount >= 0);
+
+		this.CyborgCount = factory.CyborgCount;
+		this.Production = factory.Production;
+	}
+
+	public int CyborgCount { get; set; }
+	public int Production { get; private set; }
 	public Factory GetClosestFactory(GameState game, Players owner) {
 		return game.Factories.Where(f1 => f1.Owner == owner).OrderBy(f2 => game.Graph[this, f2]).FirstOrDefault();
+	}
+
+	public Factory GetClosestFactory(GameState game, List<Factory> factories) {
+		return factories.OrderBy(f2 => game.Graph[this, f2]).FirstOrDefault();
+	}
+
+	public Factory GetFurthestFactory(GameState game, Players owner) {
+		return game.Factories.Where(f1 => f1.Owner == owner).OrderByDescending(f2 => game.Graph[this, f2]).FirstOrDefault();
+	}
+
+	public Factory GetFurthestFactory(GameState game, List<Factory> factories) {
+		return factories.OrderByDescending(f2 => game.Graph[this, f2]).FirstOrDefault();
+	}
+
+	public int GetVirtualCyborgCount(GameState game) {
+		return (int)this.Owner * this.CyborgCount + game.Troops
+			.Where(t1 => t1.Target == EntityId)
+			.Sum(t2 => (t2.Owner == Owner) ? t2.TroopCount : -t2.TroopCount);
+	}
+
+	public int GetVirtualCyborgCount(GameState game, int turnsCap) {
+		return (int)this.Owner * this.CyborgCount + game.Troops
+			.Where(t1 => t1.Target == EntityId)
+			.Where(t3 => t3.Eta <= turnsCap)
+			.Sum(t2 => (t2.Owner == Owner) ? t2.TroopCount : -t2.TroopCount);
 	}
 
 	//public PredictedState FuturePredictedState(GameState game) {
@@ -458,27 +552,21 @@ public class Factory : Entity {
 
 }
 
-public class Troops : Entity {
+public enum Players {
+	Neutral = 0, Me = 1, Opponent = -1
+}
+public struct PredictedState {
 
-	public Factory Start { get; private set; }
-	public Factory Target { get; private set; }
-	public int TroopCount { get; private set; }
-	public int Eta { get; private set; }
-
-	public Troops(int entityId, int owner, Factory start, Factory target, int troopCount, int eta) : base(entityId, owner) {
-		this.Start = start;
-		this.Target = target;
-		this.TroopCount = troopCount;
-		this.Eta = eta;
+	public int cyborgCount;
+	public Players owner;
+	public PredictedState(Players owner, int cyborgCount) {
+		this.owner = owner;
+		this.cyborgCount = cyborgCount;
 	}
+
 }
 
 public class Bomb : Entity {
-
-	public Factory Start { get; private set; }
-	public Factory Target { get; private set; }
-	public int Eta { get; private set; }
-
 
 	public Bomb(int entityId, int owner, Factory start, Factory target, int eta) : base(entityId, owner) {
 		this.Start = start;
@@ -486,5 +574,76 @@ public class Bomb : Entity {
 		this.Eta = eta;
 	}
 
+	public int Eta { get; private set; }
+	public Factory Start { get; private set; }
+	public Factory Target { get; private set; }
+}
+
+public class CommandBuilder {
+
+	private string _result = "";
+	public string Result {
+		get { return "WAIT" + _result; }
+	}
+
+	//public void AppendMove(Factory start, Factory target, int count) {
+	//	Result += string.Format("MOVE {0} {1} {2};", start.EntityId, target.EntityId, count); 		
+	//}
+
+	public CommandBuilder AppendActions(CommandBuilder actions) {
+		CommandBuilder resultCommandBuilder = new CommandBuilder();
+
+		if (actions._result != "") {
+			resultCommandBuilder._result = this._result + actions._result;
+		}
+
+		return resultCommandBuilder;
+	}
+
+	public void AppendBomb(int startId, int targetId) {
+		_result += string.Format(";BOMB {0} {1}", startId, targetId);
+	}
+
+	public void AppendMove(int startId, int targetId, int count) {
+		_result += string.Format(";MOVE {0} {1} {2}", startId, targetId, count);
+	}
+
+	public void AppendPowerup(int factoryId) {
+		_result += ";INC " + factoryId;
+	}
+
+	public void Clear() {
+		_result = "";
+	}
+}
+
+public abstract class Entity {
+
+	public Entity(int entityId, int owner) {
+		this.EntityId = entityId;
+		this.Owner = (Players)owner;
+	}
+
+	public int EntityId { get; private set; }
+	public Players Owner { get; private set; }
+
+	public static implicit operator int(Entity value) {
+		return value.EntityId;
+	}
+}
+public class Troops : Entity {
+
+	public Troops(int entityId, int owner, Factory start, Factory target, int troopCount, int eta) : base(entityId, owner) {
+		this.Start = start;
+		this.Target = target;
+		this.TroopCount = troopCount;
+		this.Eta = eta;
+	}
+
+	public int Eta { get; private set; }
+	public Factory Start { get; private set; }
+	public Factory Target { get; private set; }
+	public int TroopCount { get; private set; }
 }
 #endregion
+
