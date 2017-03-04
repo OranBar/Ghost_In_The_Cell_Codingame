@@ -141,7 +141,7 @@ public class Odinoo {
 					.Where(t1 => t1.Owner == Players.Opponent)
 					.Select(t2 => game.GetFactory(t2.Target))
 					.OrderByDescending(f3 => f3.Production)
-					.ThenBy(f4 => game.Graph[f4, f4.GetClosestFactory(game, Players.Me)])
+					.ThenByDescending(f4 => f4.GetDistanceToFurthestFactory(game, Players.Me) )
 					.ThenByDescending(f5 => f5.CyborgCount)
 					.FirstOrDefault();
 
