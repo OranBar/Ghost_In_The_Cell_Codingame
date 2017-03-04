@@ -64,12 +64,7 @@ class Player {
 			game = new GameState(map, entities);
 			string result = odinoo.Think(game);
 			Console.Error.Flush();
-			Console.WriteLine(result);
-			//foreach (var ownedFactory in game.Factories.Where(f => f.Owner == Players.Me).OrderBy(f => f.Production)) {
-			//	if (ownedFactory.CyborgCount >= 20 && ownedFactory.Production < 3) {
-			//		action.AppendPowerup(ownedFactory.EntityId);
-			//	}
-			//}	
+			Console.WriteLine(result);	
 		}
 	}
 }
@@ -86,7 +81,7 @@ public class Odinoo {
 	private int myBombsCount = 2;
 
 	public Odinoo() {
-		SwitchStrategy(new IStrategy[] { new S_Defender(), new S_Neutral_Conquerer(), new S_Macro(), new S_Swarmer() });
+		SwitchStrategy(new IStrategy[] {/* new S_Defender(),*/ new S_Neutral_Conquerer()/*, new S_Macro(), new S_Swarmer()*/ });
 	}
 
 	public void Conqueror_FirstTurn(GameState game, ref CommandBuilder action) {
@@ -100,11 +95,8 @@ public class Odinoo {
 			.ThenBy(f4 => f4.CyborgCount);
 
 		foreach (var factory in factoriesToAttack) {
-			//Console.Error.WriteLine("Attacking Factory " + factory.EntityId);
 			action.AppendMove(myBestFactory, factory, factory.CyborgCount + 1);
-			//Console.Error.WriteLine("Troops Before: " +troopsAvailable);
 			troopsAvailable -= (factory.CyborgCount + 1);
-			//Console.Error.WriteLine("Troops Afterwards: " + troopsAvailable);
 			if (troopsAvailable <= 0) {
 				break;
 			}
@@ -122,11 +114,6 @@ public class Odinoo {
 	public string Think(GameState game) {
 		turn++;
 		CommandBuilder action = new CommandBuilder();
-
-		//game.Factories
-		//	.Where(f1 => f1.Owner != Players.Neutral).ToList()
-		//	.ForEach(f2 => Console.Error.WriteLine("Factory " + f2.EntityId + " Virtual Count is " + f2.GetVirtualCyborgCoung(game)));
-
 
 		if (turn == 1) {
 			Console.Error.WriteLine("Conqueror Mode");
@@ -267,6 +254,7 @@ public class S_Neutral_Conquerer : IStrategy {
 		var factoriesToAttack = game.Factories
 			.Where(f1 => f1.Owner == Players.Neutral)
 			.Where(f3 => f3.GetVirtualCyborgCount(virtualGame) <= 0 )
+			.Where(f4 => f4.GetDistanceToClosestFactory(game, Players.Me) <= f4.GetDistanceToClosestFactory(game, Players.Opponent)) //Don't cross the map.
 			.OrderByDescending(f2 => f2.Production)
 			.ThenBy(f4 => f4.CyborgCount)
 			.ToList();
@@ -274,19 +262,28 @@ public class S_Neutral_Conquerer : IStrategy {
 		factoriesToAttack.ForEach(f1 => Console.Error.WriteLine("Factory " + f1.EntityId + " VCC " + f1.GetVirtualCyborgCount(virtualGame) + " CC " + f1.CyborgCount));
 
 		foreach (Factory neutralFactory in factoriesToAttack) {
-			int troopsNeeded = neutralFactory.CyborgCount;
+			//Console.Error.WriteLine("neutralFactory " + neutralFactory);
+
+			int troopsNeeded = neutralFactory.CyborgCount + 1;
 
 			List<Factory> myFactoriesReadyForOffense = virtualGame.GetFactoriesOf(Players.Me)
-				.Where(f3 => f3.GetVirtualCyborgCount(virtualGame) > 0)
+				.Where(f3 => f3.GetVirtualCyborgCount(virtualGame) > 1)
 				.OrderBy(f1 => virtualGame.Graph[f1, neutralFactory])
-				.ThenBy(f2 => f2.CyborgCount).ToList();
+				.ThenByDescending(f2 => f2.CyborgCount).ToList();
 
 
 			foreach (Factory currFactory in myFactoriesReadyForOffense) {
-				if(currFactory.GetVirtualCyborgCount(virtualGame) > 0) {
-					action.AppendMove(currFactory, neutralFactory, currFactory.GetVirtualCyborgCount(virtualGame));
-					virtualGame = virtualGame.UpdateGame_Move(currFactory, neutralFactory, currFactory.GetVirtualCyborgCount(virtualGame));
-					troopsNeeded -= currFactory.GetVirtualCyborgCount(virtualGame);
+				if(currFactory.GetVirtualCyborgCount(virtualGame) > 1) {
+					//Console.Error.WriteLine("currFactory.GetVirtualCyborgCount(virtualGame) " + currFactory.GetVirtualCyborgCount(virtualGame));
+					//Console.Error.WriteLine("troopsNeeded " + troopsNeeded);
+
+					int attackTroopsCount = Math.Min(currFactory.GetVirtualCyborgCount(virtualGame)-1, troopsNeeded);
+					action.AppendMove(currFactory, neutralFactory, attackTroopsCount);
+					virtualGame = virtualGame.UpdateGame_Move(currFactory, neutralFactory, attackTroopsCount);
+					troopsNeeded -= attackTroopsCount;
+					if(troopsNeeded <= 0) {
+						break;
+					}
 				}
 			}																												 
 		}
