@@ -85,7 +85,7 @@ public class Odinoo {
 	private int myBombsCount = 2;
 
 	public Odinoo() {
-		SwitchStrategy(new IStrategy[] { new S_Defender() });
+		SwitchStrategy(new IStrategy[] { new S_Defender(), new S_Neutral_Conquerer(), new S_Macro() });
 	}
 
 	public void Conqueror_FirstTurn(GameState game, ref CommandBuilder action) {
@@ -183,13 +183,84 @@ public class S_Defender : IStrategy {
 					int supportTroopsCount = Math.Min(reinforcementsNeeded, currFactory.GetVirtualCyborgCount(virtualGameState)); //Send your virtual cyborg count, but don't go over reinforcementsNeeded
 
 					action.AppendMove(currFactory, myFact, supportTroopsCount);
-					virtualGameState.UpdateGame_Move(currFactory, myFact, supportTroopsCount);
+					virtualGameState = virtualGameState.UpdateGame_Move(currFactory, myFact, supportTroopsCount);
 					reinforcementsNeeded -= supportTroopsCount;
 				}
 			}			
 		}
 
 		return virtualGameState;
+	}
+
+}
+
+public class S_Macro : IStrategy {
+	
+	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
+		//Use PowerUp
+		GameState virtualGameState = new GameState(game);
+		foreach (Factory myFact in virtualGameState.GetFactoriesOf(Players.Me)) {
+			if(myFact.Production < 3 && myFact.GetVirtualCyborgCount(virtualGameState) - 10 >= 0) {
+				action.AppendPowerup(myFact.EntityId);
+				virtualGameState.GetFactory(myFact).CyborgCount -= 10;
+			}
+		}
+		//Move troops to factories with low count to allow for Powerups in next turn(s)
+
+		List<Factory> factoriesNotAtFullProduction = virtualGameState.GetFactoriesOf(Players.Me).Where(f1 => f1.Production < 3).Where(f2 => f2.GetVirtualCyborgCount(virtualGameState) < 40).ToList();
+
+		foreach(Factory lowCountFactory in factoriesNotAtFullProduction) {
+			int supportTroopsCount = 0;
+
+			List<Factory> myFactoriesSorted = game.GetFactoriesOf(Players.Me)
+				.Where(f3 => f3.Production == 3)
+				.Where(f2 => f2.GetVirtualCyborgCount(virtualGameState) >= 2)
+				.OrderByDescending(f1 => f1.GetDistanceToClosestFactory(game, Players.Opponent)).ToList();
+
+			foreach(Factory supportingFactory in myFactoriesSorted) {
+				action.AppendMove(supportingFactory, lowCountFactory, supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2);
+				virtualGameState = virtualGameState.UpdateGame_Move(supportingFactory, lowCountFactory, supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2);
+				supportTroopsCount += supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2;
+				if(supportTroopsCount >= 40) {
+					break;
+				}
+			}
+			
+		}  
+		return virtualGameState;
+	}  
+
+}
+
+public class S_Neutral_Conquerer : IStrategy {
+
+	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
+		GameState virtualGame = new GameState(game);
+
+		var factoriesToAttack = game.Factories
+			.Where(f1 => f1.Owner == Players.Neutral)
+			.OrderByDescending(f2 => f2.Production)
+			.ThenBy(f4 => f4.CyborgCount);
+
+		foreach (Factory neutralFactory in factoriesToAttack) {
+			int troopsNeeded = neutralFactory.CyborgCount;
+
+			List<Factory> myFactoriesReadyForOffense = virtualGame.GetFactoriesOf(Players.Me)
+				.Where(f3 => f3.GetVirtualCyborgCount(virtualGame) > 0)
+				.OrderBy(f1 => virtualGame.Graph[f1, neutralFactory])
+				.ThenBy(f2 => f2.CyborgCount).ToList();
+
+
+			foreach (Factory currFactory in myFactoriesReadyForOffense) {
+				if(currFactory.GetVirtualCyborgCount(virtualGame) > 0) {
+					action.AppendMove(currFactory, neutralFactory, currFactory.GetVirtualCyborgCount(virtualGame));
+					virtualGame = virtualGame.UpdateGame_Move(currFactory, neutralFactory, currFactory.GetVirtualCyborgCount(virtualGame));
+					troopsNeeded -= currFactory.GetVirtualCyborgCount(virtualGame);
+				}
+			}																												 
+		}
+
+		return virtualGame;
 	}
 
 }
@@ -490,8 +561,20 @@ public class Factory : Entity {
 
 	public int CyborgCount { get; set; }
 	public int Production { get; private set; }
-	public Factory GetClosestFactory(GameState game, Players owner) {
-		return game.Factories.Where(f1 => f1.Owner == owner).OrderBy(f2 => game.Graph[this, f2]).FirstOrDefault();
+	public Factory GetClosestFactory(GameState game, Players ownerFilter) {
+		return game.Factories.Where(f1 => f1.Owner == ownerFilter).OrderBy(f2 => game.Graph[this, f2]).FirstOrDefault();
+	}
+
+	public int GetDistanceTo(GameState game, Factory f) {
+		return game.Graph[this, f];
+	}
+
+	public int GetDistanceToClosestFactory(GameState game, Players ownerFilter) {
+		return GetDistanceTo(game, GetClosestFactory(game, ownerFilter));
+	}
+
+	public int GetDistanceToFurthestFactory(GameState game, Players ownerFilter) {
+		return GetDistanceTo(game, GetFurthestFactory(game, ownerFilter));
 	}
 
 	public Factory GetClosestFactory(GameState game, List<Factory> factories) {
