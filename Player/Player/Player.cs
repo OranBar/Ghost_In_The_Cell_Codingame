@@ -291,7 +291,7 @@ public class S_Macro : IStrategy {
 		}
 		//Move troops to factories with low count to allow for Powerups in next turn(s)
 
-		List<Factory> factoriesNotAtFullProduction = virtualGameState.GetFactoriesOf(Players.Me).Where(f1 => f1.Production < 3).Where(f2 => f2.GetVirtualCyborgCount(virtualGameState) < 40).ToList();
+		List<Factory> factoriesNotAtFullProduction = virtualGameState.GetFactoriesOf(Players.Me).Where(f1 => f1.Production < 3).Where(f2 => f2.GetVirtualCyborgCount(virtualGameState) < 31 - (f2.Production*10)).ToList();
 
 		foreach (Factory lowCountFactory in factoriesNotAtFullProduction) {
 			int supportTroopsCount = 0;
@@ -344,6 +344,8 @@ public class S_Neutral_Conquerer : IStrategy {
 
 		foreach (Factory neutralFactory in factoriesToAttack) {
 
+			Console.Error.WriteLine("Considering Neutral Factory "+neutralFactory.EntityId);
+
 			int troopsNeeded = neutralFactory.CyborgCount + 1;
 
 			List<Factory> myFactoriesReadyForOffense = virtualGame.GetFactoriesOf(Players.Me)
@@ -351,9 +353,15 @@ public class S_Neutral_Conquerer : IStrategy {
 				.OrderBy(f1 => virtualGame.Graph[f1, neutralFactory])
 				.ThenByDescending(f2 => f2.CyborgCount).ToList();
 
+			Console.Error.WriteLine("Factories Ready for offense");
+			myFactoriesReadyForOffense.ForEach(f1 => Console.Error.WriteLine("Factory " + f1.EntityId + " VCC " + f1.GetVirtualCyborgCount(virtualGame) + " CC " + f1.CyborgCount));
+
+			if (troopsNeeded >= myFactoriesReadyForOffense.Sum(f1 => f1.GetVirtualCyborgCount(virtualGame))) {
+				break;
+			}
 
 			foreach (Factory currFactory in myFactoriesReadyForOffense) {
-				if(currFactory.GetVirtualCyborgCount(virtualGame) > 1) {
+				if(currFactory.GetVirtualCyborgCount(virtualGame) > 1 && currFactory.CyborgCount > 1) {
 				
 					int attackTroopsCount = Math.Min(currFactory.GetVirtualCyborgCount(virtualGame)-1, troopsNeeded);
 					action.AppendMove(currFactory, neutralFactory, attackTroopsCount);
@@ -376,11 +384,11 @@ public class S_ShyExpander : IStrategy {
 	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
 		//Console.Error.WriteLine("my CC " + game.GetCyborgCount(Players.Me) + " opponent cc " + game.GetCyborgCount(Players.Opponent));
 
-		if (game.GetProduction(Players.Me) == game.GetProduction(Players.Opponent)
-		&& game.GetCyborgCount(Players.Me) > game.GetCyborgCount(Players.Opponent)
-		&& game.GetFactoriesOf(Players.Me).Count >= game.GetFactoriesOf(Players.Opponent).Count) {
-			return game;
-		}
+		//if (game.GetProduction(Players.Me) >= game.GetProduction(Players.Opponent)
+		//&& game.GetCyborgCount(Players.Me) > game.GetCyborgCount(Players.Opponent)
+		//&& game.GetFactoriesOf(Players.Me).Count >= game.GetFactoriesOf(Players.Opponent).Count) {
+		//	return game;
+		//}
 
 		if (game.GetFactoriesOf(Players.Me).Where(f1 => f1.Production != 3).Count() == 0
 			&& game.GetProduction(Players.Me) <= game.GetProduction(Players.Opponent)
@@ -481,6 +489,7 @@ public class S_Bomber : IStrategy {
 				game.GetFactoriesOf(Players.Opponent)
 				.Where(f => f.Production == targetProduction)
 				.Where(f2 => game.Bombs.Where(b=>b.Target == f2).Count() == 0 )
+				.Where(f4 => f4.CyborgCount >= 10)
 				.OrderBy(f1 => f1.GetDistanceToClosestFactory(game, Players.Me))
 				.FirstOrDefault();
 
@@ -513,8 +522,8 @@ public class S_VCDistributorFromBackfield : IStrategy {
 
 
 		List<Factory> factoriesByClosest = game.GetFactoriesOf(Players.Me).OrderBy(f1 => f1.GetDistanceToClosestFactory(game, Players.Opponent)).ToList();
-		List<Factory> moreImportantFactories = factoriesByClosest.Take(factoriesByClosest.Count() + 1 / 2).ToList();
-		List<Factory> backfieldFactories = factoriesByClosest.Skip(factoriesByClosest.Count() + 1 / 2).ToList();
+		List<Factory> moreImportantFactories = factoriesByClosest.Take((factoriesByClosest.Count() + 1) / 2).ToList();
+		List<Factory> backfieldFactories = factoriesByClosest.Skip((factoriesByClosest.Count() + 1) / 2).ToList();
 
 		int totalVC = game.GetFactoriesOf(Players.Me).Sum(f1 => f1.GetVirtualCyborgCount(game));
 		int importantFactoryVC = (totalVC - backfieldFactories.Count()) / moreImportantFactories.Count();
@@ -528,6 +537,10 @@ public class S_VCDistributorFromBackfield : IStrategy {
 				
 				//int troopsToSend = new int[] { backFieldFact.CyborgCount - 1, backFieldFact.GetVirtualCyborgCount(game) - 1 }.Min();
 				int troopsToSend = new int[] { backFieldFact.GetVirtualCyborgCount(game) - Math.Min(importantFactoryVC, backFieldFact.GetVirtualCyborgCount(game) - 1), backFieldFact.CyborgCount - 1 }.Min();
+
+				if(troopsToSend <= 0) {
+					continue;
+				}
 
 				Factory factoryToHelp = moreImportantFactories
 					.Where(f2 => f2.GetVirtualCyborgCount(game) < importantFactoryVC)
@@ -572,11 +585,11 @@ public class S_CloseCombatAttacker : IStrategy {
 			return game;
 		}
 
-		if(game.GetProduction(Players.Me) == game.GetProduction(Players.Opponent) 
-		&& game.GetCyborgCount(Players.Me) > game.GetCyborgCount(Players.Opponent)
-		&& game.GetFactoriesOf(Players.Me).Count >= game.GetFactoriesOf(Players.Opponent).Count) {
-			return game;
-		}
+		//if(game.GetProduction(Players.Me) == game.GetProduction(Players.Opponent) 
+		//&& game.GetCyborgCount(Players.Me) > game.GetCyborgCount(Players.Opponent)
+		//&& game.GetFactoriesOf(Players.Me).Count >= game.GetFactoriesOf(Players.Opponent).Count) {
+		//	return game;
+		//}
 
 		Console.Error.WriteLine("Attack");
 
@@ -606,9 +619,11 @@ public class S_CloseCombatAttacker : IStrategy {
 
 		//Attack 
 		if (attackFactory != null && attackFactory.CyborgCount + 6 > targetFactory.CyborgCount) {
-			if(attackFactory.Production > 0 || game.GetFactoriesOf(Players.Me).Where(f1 => f1.Production != 3).Count() != 0) {
-				action.AppendMove(attackFactory, targetFactory, attackFactory.CyborgCount - 5);
-				game.UpdateGame_Move(attackFactory, targetFactory, attackFactory.CyborgCount - 5);
+			if(attackFactory.Production > 0 || game.GetFactoriesOf(Players.Me).Where(f1 => f1.Production != 3).Count() != 0 ) {
+				if(attackFactory.CyborgCount - 5 >= 1) {
+					action.AppendMove(attackFactory, targetFactory, attackFactory.CyborgCount - 5);
+					game.UpdateGame_Move(attackFactory, targetFactory, attackFactory.CyborgCount - 5);
+				}
 			}
 		}				
 		//OR Give me all your power
@@ -964,7 +979,7 @@ public class GameState {
 		Factory resultStartFact = new Factory(resultGame.GetFactory(startFactory));
 		resultStartFact.CyborgCount -= supportTroopsCount;
 		//Make the factory Switch-a-roo
-		resultGame.Factories.Remove(startFactory);
+		resultGame.Factories.Remove(resultGame.Factories.Find(f => f.EntityId == startFactory.EntityId));
 		resultGame.Factories.Add(resultStartFact);
 
 		int maxEntityId = this.Entities.Max(e => e.EntityId);
