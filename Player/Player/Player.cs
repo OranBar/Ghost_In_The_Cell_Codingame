@@ -129,35 +129,37 @@ public class Odinoo {
 			//}
 
 			Console.Error.WriteLine("Sending First Turn Bomb");
-			action.AppendBomb(game.GetFactoriesOf(Players.Me).First(), game.GetFactoriesOf(Players.Opponent).First());
-			myBombsCount--;
+			//action.AppendBomb(game.GetFactoriesOf(Players.Me).First(), game.GetFactoriesOf(Players.Opponent).First());
+			//myBombsCount--;
 
-			SwitchStrategy(new IStrategy[] { new S_Defender(), new S_Neutral_Conquerer(), new S_Macro()/*, new S_Swarmer()*/ });
+			SwitchStrategy(new IStrategy[] { new S_Defender(), new S_Neutral_Conquerer(), new S_Macro(), new S_Bomber(2)});
 
 		} else {
-			if (myBombsCount > 0) {
-				//Throw the second motherfucking bomb
-				Factory secondBombTarget =
-					game.Troops
-					.Where(t1 => t1.Owner == Players.Opponent)
-					.Where(t3 => t3.Target.Owner != Players.Me)
-					.Select(t2 => game.GetFactory(t2.Target))
-					.OrderByDescending(f3 => f3.Production)
-					.ThenByDescending(f4 => f4.GetDistanceToFurthestFactory(game, Players.Me))
-					.ThenByDescending(f5 => f5.CyborgCount)
-					.FirstOrDefault();
+			//if (myBombsCount > 0) {
+			//	//Throw the second motherfucking bomb
+			//	Factory secondBombTarget =
+			//		game.Troops
+			//		.Where(t1 => t1.Owner == Players.Opponent)
+			//		.Where(t3 => t3.Target.Owner != Players.Me)
+			//		.Select(t2 => game.GetFactory(t2.Target))
+			//		.OrderByDescending(f3 => f3.Production)
+			//		.ThenByDescending(f4 => f4.GetDistanceToFurthestFactory(game, Players.Me))
+			//		.ThenByDescending(f5 => f5.CyborgCount)
+			//		.FirstOrDefault();
 
-				if (secondBombTarget != null) {
-					Console.Error.WriteLine("Sending Second Bomb");
-					action.AppendBomb(secondBombTarget.GetClosestFactory(game, Players.Me), secondBombTarget.EntityId);
-					myBombsCount--;
-				}
-			}
+			//	if (secondBombTarget != null) {
+			//		Console.Error.WriteLine("Sending Second Bomb");
+			//		action.AppendBomb(secondBombTarget.GetClosestFactory(game, Players.Me), secondBombTarget.EntityId);
+			//		myBombsCount--;
+			//	}
+			//}
 		}
 
 		if (game.GetFactoriesOf(Players.Me).Where(f1 => f1.Production != 3).Count() == 0) {
 			//Macro Phase finished
-			SwitchStrategy(new IStrategy[] { new S_Defender(), new S_Neutral_Conquerer(), new S_Macro(), new S_ShyExpander() });
+			AddStrategy(new S_ShyExpander());
+			//AddStrategy(new S_MoveToFrontier());
+			//SwitchStrategy(new IStrategy[] { new S_Defender(), new S_Neutral_Conquerer(), new S_Macro(), new S_ShyExpander(), new S_Bomber()/*, new S_MoveToFrontier()*/ });
 		}
 
 
@@ -177,6 +179,7 @@ public class S_Defender : IStrategy {
 	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
 		GameState virtualGameState = new GameState(game);
 
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		//Avoid the first bomb
 		if (bombTargetAndEta == null) {
 			if (virtualGameState.PrevGameState?.Bombs.Where(b => b.Owner == Players.Opponent).Count() < virtualGameState.Bombs.Where(b => b.Owner == Players.Opponent).Count()) {
@@ -200,23 +203,30 @@ public class S_Defender : IStrategy {
 			action.AppendMove(factoryToEvacuate.EntityId, closestFactory.EntityId, factoryToEvacuate.CyborgCount);
 			virtualGameState = virtualGameState.UpdateGame_Move(factoryToEvacuate, closestFactory, factoryToEvacuate.CyborgCount);
 		}
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		//Reinforce Weak Factories
+		HashSet<Factory> myHelpingFactories = new HashSet<Factory>();
 		foreach (Factory myFact in virtualGameState.GetFactoriesOf(Players.Me).Where(f1 => f1.Production > 0)) {
+
 			int myFactVirtualCount = myFact.GetVirtualCyborgCount(virtualGameState);
 		
 			if (myFactVirtualCount <= 0) {
 				//This factory needs reinforcements
 				int reinforcementsNeeded = (myFactVirtualCount * -1) + 5;
+				Console.Error.WriteLine("Factory " + myFact.EntityId + " need reinforcements! Its VC is "+myFactVirtualCount+" and I will send "+ ((myFactVirtualCount * -1) + 5) );
 				//Get a list of factories ready to support, ordered by proximity
 
 				while(reinforcementsNeeded > 0) {
 
 					List<Factory> factoriesReadyToSupport = virtualGameState.GetFactoriesOf(Players.Me)
-						.Where(f4 => f4.EntityId != myFact.EntityId)
+						.Where(f4 => myHelpingFactories.Contains(f4) == false )
 						.Where(f1 => f1.GetVirtualCyborgCount(virtualGameState) > 1)
 						.Where(f3 => f3.CyborgCount > 2)
-						.OrderBy(f2 => virtualGameState.Graph[f2, myFact.EntityId]).ToList();
+						.OrderBy(f2 => virtualGameState.Graph[f2, myFact.EntityId])
+						.ToList();
 
 					if (factoriesReadyToSupport.Contains(myFact)){
 						break;
@@ -242,9 +252,13 @@ public class S_Defender : IStrategy {
 					action.AppendMove(currFactory, myFact, supportTroopsCount);
 					virtualGameState = virtualGameState.UpdateGame_Move(currFactory, myFact, supportTroopsCount);
 					reinforcementsNeeded -= supportTroopsCount;
+
+					myHelpingFactories.Add(myFact);
 				}
 			}			
 		}
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 		return virtualGameState;
 	}
@@ -348,10 +362,16 @@ public class S_ShyExpander : IStrategy {
 		Console.Error.WriteLine("my CC " + game.GetCyborgCount(Players.Me) + " opponent cc " + game.GetCyborgCount(Players.Opponent));
 
 		if (game.GetFactoriesOf(Players.Me).Where(f1 => f1.Production != 3).Count() == 0
+			&& game.GetProduction(Players.Me) <= game.GetProduction(Players.Opponent)
 			//&& game.GetCyborgCount(Players.Me) > game.GetCyborgCount(Players.Opponent) 
 			)  {
-			
-			List<Factory> neutrals = game.GetFactoriesOf(Players.Neutral).OrderByDescending(f1 => f1.GetDistanceToFurthestFactory(game, Players.Opponent)).ToList();
+
+			//TODO this logic needs reviewing
+			List<Factory> neutrals = game.GetFactoriesOf(Players.Neutral)
+				.OrderBy( neutral => game.GetFactoriesOf(Players.Me).Sum(f3 => neutral.GetDistanceTo(game, f3)) )
+				.ToList();
+
+			neutrals.ForEach(f => Console.Error.WriteLine("Factory " + f.EntityId + " has " + game.GetFactoriesOf(Players.Me).Sum(f3 => f.GetDistanceTo(game, f3))) );
 
 			Factory target = neutrals.FirstOrDefault();
 
@@ -365,6 +385,104 @@ public class S_ShyExpander : IStrategy {
 
 }
 
+public class S_MoveToFrontier : IStrategy {
+
+	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
+		//List<Factory> sortedFactoriesDistance = game.GetFactoriesOf(Players.Me);
+
+
+		//List<Factory> myFactories = game.GetFactoriesOf(Players.Me).OrderBy(f1 => f1.GetDistanceToClosestFactory(game, Players.Opponent)).ToList();
+		int min = game.GetFactoriesOf(Players.Me).Min(f1 => f1.GetDistanceToClosestFactory(game, Players.Opponent));
+		List<Factory> myFront = game.GetFactoriesOf(Players.Me).Where(f1 => f1.GetDistanceToClosestFactory(game, Players.Opponent) == min).ToList();
+		int frontFactoryCount = myFront.Count();
+		int totalFactoryCount = game.GetFactoriesOf(Players.Me).Count();
+		int nonFrontFactoryCount = totalFactoryCount - frontFactoryCount;
+
+		int targetFrontVC = (game.GetFactoriesOf(Players.Me).Sum(f => f.GetVirtualCyborgCount(game)) - nonFrontFactoryCount) / frontFactoryCount;
+
+		List<Factory> nonFrontFactories = game.GetFactoriesOf(Players.Me).Where(f1 => f1.GetDistanceToClosestFactory(game, Players.Opponent) != min).ToList();
+		foreach (Factory nonFrontFactory in nonFrontFactories) {
+			Factory factoryToReinforce = myFront.Where(f => f.GetVirtualCyborgCount(game) < targetFrontVC).FirstOrDefault();
+			if(factoryToReinforce == null) {
+				break;
+			}
+			
+			if(nonFrontFactory.Production < 3) {
+				if(nonFrontFactory.CyborgCount > 10 && nonFrontFactory.GetVirtualCyborgCount(game) > 11) {
+					action.AppendMove(nonFrontFactory, factoryToReinforce, nonFrontFactory.GetVirtualCyborgCount(game) - 11);
+					game.UpdateGame_Move(nonFrontFactory, factoryToReinforce, nonFrontFactory.GetVirtualCyborgCount(game) - 11);
+				}
+
+			}	else {
+				if (nonFrontFactory.GetVirtualCyborgCount(game) - 1 > 1) {
+					action.AppendMove(nonFrontFactory, factoryToReinforce, nonFrontFactory.GetVirtualCyborgCount(game) - 1);
+					game.UpdateGame_Move(nonFrontFactory, factoryToReinforce, nonFrontFactory.GetVirtualCyborgCount(game) - 1);
+				}
+			}
+		}
+
+		//List<Factory> factoriesUnderFire
+
+
+
+		int averageVC = game.GetFactoriesOf(Players.Me).Sum(f1 => f1.GetVirtualCyborgCount(game)) / game.GetFactoriesOf(Players.Me).Count();
+
+
+		foreach(Factory myFact in game.GetFactoriesOf(Players.Me)) {
+			int vcMissing = averageVC - myFact.GetVirtualCyborgCount(game);
+			if(vcMissing > 0) {
+				foreach(Factory myOtherFact in game.GetFactoriesOf(Players.Me)) {
+					if(myOtherFact.GetVirtualCyborgCount(game) > averageVC) {
+						action.AppendMove(myOtherFact, myFact, myOtherFact.GetVirtualCyborgCount(game) - averageVC);
+						game.UpdateGame_Move(myOtherFact, myFact, myOtherFact.GetVirtualCyborgCount(game) - averageVC);
+					}
+				}
+			}
+		}
+		return game;
+	}
+
+}
+
+public class S_Bomber : IStrategy {
+
+	int bombCount = 2;
+	Tuple<Factory, int> lastBombedFactory;
+
+	public S_Bomber(int bombs) {
+		this.bombCount = bombs;
+	}
+
+	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
+		Console.Error.WriteLine("Bomb count "+ bombCount);
+		if(bombCount > 0) {
+			int targetProduction = game.Factories.Max(f => f.Production);
+			Factory enemyFactoryMatchingProduction =
+				game.GetFactoriesOf(Players.Opponent)
+				.Where(f => f.Production == targetProduction)
+				.Where(f2 => game.Bombs.Where(b=>b.Target == f2).Count() == 0 )
+				.OrderBy(f1 => f1.GetDistanceToClosestFactory(game, Players.Me))
+				.FirstOrDefault();
+
+			game.GetFactoriesOf(Players.Opponent)
+				.Where(f => f.Production == targetProduction)
+				.Where(f2 => game.Bombs.Where(b => b.Target == f2).Count() == 0)
+				.OrderBy(f1 => f1.GetDistanceToClosestFactory(game, Players.Me))
+				.ToList().ForEach(f3 => Console.Error.WriteLine("POSSIBLE TARGET " + f3.EntityId));
+
+
+			if(enemyFactoryMatchingProduction != null) {
+				if(lastBombedFactory == null || (enemyFactoryMatchingProduction.EntityId != lastBombedFactory.Item1.EntityId || game.Turn > lastBombedFactory.Item2 + 7)) {
+					action.AppendBomb(enemyFactoryMatchingProduction.GetClosestFactory(game, Players.Me), enemyFactoryMatchingProduction);
+					bombCount--;
+					lastBombedFactory = Tuple.Create(enemyFactoryMatchingProduction, game.Turn);
+				}
+			}
+		}		
+		return game;
+	}
+
+}
 
 public class S_Swarmer : IStrategy {
 
