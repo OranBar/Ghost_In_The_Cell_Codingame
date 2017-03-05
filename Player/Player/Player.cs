@@ -376,6 +376,12 @@ public class S_ShyExpander : IStrategy {
 	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
 		//Console.Error.WriteLine("my CC " + game.GetCyborgCount(Players.Me) + " opponent cc " + game.GetCyborgCount(Players.Opponent));
 
+		if (game.GetProduction(Players.Me) == game.GetProduction(Players.Opponent)
+		&& game.GetCyborgCount(Players.Me) > game.GetCyborgCount(Players.Opponent)
+		&& game.GetFactoriesOf(Players.Me).Count >= game.GetFactoriesOf(Players.Opponent).Count) {
+			return game;
+		}
+
 		if (game.GetFactoriesOf(Players.Me).Where(f1 => f1.Production != 3).Count() == 0
 			&& game.GetProduction(Players.Me) <= game.GetProduction(Players.Opponent)
 			//&& game.GetCyborgCount(Players.Me) > game.GetCyborgCount(Players.Opponent) 
@@ -565,12 +571,14 @@ public class S_CloseCombatAttacker : IStrategy {
 		if(game.GetProduction(Players.Me) > game.GetProduction(Players.Opponent)){
 			return game;
 		}
+
 		if(game.GetProduction(Players.Me) == game.GetProduction(Players.Opponent) 
 		&& game.GetCyborgCount(Players.Me) > game.GetCyborgCount(Players.Opponent)
 		&& game.GetFactoriesOf(Players.Me).Count >= game.GetFactoriesOf(Players.Opponent).Count) {
 			return game;
 		}
 
+		Console.Error.WriteLine("Attack");
 
 
 		List<Factory> sortedTargetFactories = game.GetFactoriesOf(Players.Opponent)
