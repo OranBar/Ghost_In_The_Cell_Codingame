@@ -562,6 +562,17 @@ public class S_VCDistributorFromBackfield : IStrategy {
 public class S_CloseCombatAttacker : IStrategy {
 
 	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
+		if(game.GetProduction(Players.Me) > game.GetProduction(Players.Opponent)){
+			return game;
+		}
+		if(game.GetProduction(Players.Me) == game.GetProduction(Players.Opponent) 
+		&& game.GetCyborgCount(Players.Me) > game.GetCyborgCount(Players.Opponent)
+		&& game.GetFactoriesOf(Players.Me).Count >= game.GetFactoriesOf(Players.Opponent).Count) {
+			return game;
+		}
+
+
+
 		List<Factory> sortedTargetFactories = game.GetFactoriesOf(Players.Opponent)
 			.Where(f3 => f3.Production > 0)
 			.Where(f1 => f1.GetDistanceToClosestFactory(game, Players.Me) <= 3)
