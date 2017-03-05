@@ -304,10 +304,14 @@ public class S_Macro : IStrategy {
 				.ToList();
 
 			foreach (Factory supportingFactory in myFactoriesSorted) {
-				action.AppendMove(supportingFactory, lowCountFactory, supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2);
-				virtualGameState = virtualGameState.UpdateGame_Move(supportingFactory, lowCountFactory, supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2);
-				supportTroopsCount += supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2;
-				if (supportTroopsCount >= 40) {
+				Console.Error.WriteLine(string.Format("Macro Move: {0} {1} {2}", supportingFactory.EntityId, lowCountFactory.EntityId, supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2));
+				int supportTroopsSent = Math.Min(supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2, 5);
+
+				action.AppendMove(supportingFactory, lowCountFactory, supportTroopsSent);
+				virtualGameState = virtualGameState.UpdateGame_Move(supportingFactory, lowCountFactory, supportTroopsSent);
+				supportTroopsCount += supportTroopsSent;
+
+				if (supportTroopsCount + lowCountFactory.CyborgCount + 1 >= 11 ) {
 					break;
 				}
 			}
@@ -570,13 +574,20 @@ public class S_CloseCombatAttacker : IStrategy {
 			return game;
 		}
 
-		Factory attackFactory = game.GetFactoriesOf(Players.Me).OrderBy(f1 => f1.GetDistanceTo(game, targetFactory)).ThenBy(f2 => f2.GetVirtualCyborgCount(game)).First();
-		Console.Error.WriteLine("I really want to build an attack from " + attackFactory.EntityId + " to " + targetFactory.EntityId);
+		Factory attackFactory = game.GetFactoriesOf(Players.Me)
+			.Where(f3 => f3.GetVirtualCyborgCount(game) > 5)
+			.OrderBy(f1 => f1.GetDistanceTo(game, targetFactory))
+			.ThenBy(f2 => f2.GetVirtualCyborgCount(game))
+			.FirstOrDefault();
+
+		Console.Error.WriteLine("I really want to build an attack from " + attackFactory?.EntityId + " to " + targetFactory?.EntityId);
 
 		//Attack 
 		if (attackFactory != null && attackFactory.CyborgCount + 5 > targetFactory.CyborgCount) {
-			action.AppendMove(attackFactory, targetFactory, attackFactory.CyborgCount - 5);
-			game.UpdateGame_Move(attackFactory, targetFactory, attackFactory.CyborgCount - 5);
+			if(attackFactory.Production > 0 || game.GetFactoriesOf(Players.Me).Where(f1 => f1.Production != 3).Count() != 0) {
+				action.AppendMove(attackFactory, targetFactory, attackFactory.CyborgCount - 5);
+				game.UpdateGame_Move(attackFactory, targetFactory, attackFactory.CyborgCount - 5);
+			}
 		}				
 		//OR Give me all your power
 
