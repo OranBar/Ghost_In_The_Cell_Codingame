@@ -305,7 +305,7 @@ public class S_Macro : IStrategy {
 
 			foreach (Factory supportingFactory in myFactoriesSorted) {
 				Console.Error.WriteLine(string.Format("Macro Move: {0} {1} {2}", supportingFactory.EntityId, lowCountFactory.EntityId, supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2));
-				int supportTroopsSent = Math.Min(supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2, 5);
+				int supportTroopsSent = Math.Min(supportingFactory.GetVirtualCyborgCount(virtualGameState) / 2, 10);
 
 				action.AppendMove(supportingFactory, lowCountFactory, supportTroopsSent);
 				virtualGameState = virtualGameState.UpdateGame_Move(supportingFactory, lowCountFactory, supportTroopsSent);
@@ -562,7 +562,10 @@ public class S_VCDistributorFromBackfield : IStrategy {
 public class S_CloseCombatAttacker : IStrategy {
 
 	public GameState ExecuteStrategy(GameState game, ref CommandBuilder action) {
-		List<Factory> sortedTargetFactories = game.GetFactoriesOf(Players.Opponent).Where(f1 => f1.GetDistanceToClosestFactory(game, Players.Me) <= 3).OrderByDescending(f2 => f2.GetVirtualCyborgCount(game)).ToList();
+		List<Factory> sortedTargetFactories = game.GetFactoriesOf(Players.Opponent)
+			.Where(f3 => f3.Production > 0)
+			.Where(f1 => f1.GetDistanceToClosestFactory(game, Players.Me) <= 3)
+			.OrderByDescending(f2 => f2.GetVirtualCyborgCount(game)).ToList();
 
 		if(sortedTargetFactories.Count == 0) {
 			return game;
@@ -583,7 +586,7 @@ public class S_CloseCombatAttacker : IStrategy {
 		Console.Error.WriteLine("I really want to build an attack from " + attackFactory?.EntityId + " to " + targetFactory?.EntityId);
 
 		//Attack 
-		if (attackFactory != null && attackFactory.CyborgCount + 5 > targetFactory.CyborgCount) {
+		if (attackFactory != null && attackFactory.CyborgCount + 6 > targetFactory.CyborgCount) {
 			if(attackFactory.Production > 0 || game.GetFactoriesOf(Players.Me).Where(f1 => f1.Production != 3).Count() != 0) {
 				action.AppendMove(attackFactory, targetFactory, attackFactory.CyborgCount - 5);
 				game.UpdateGame_Move(attackFactory, targetFactory, attackFactory.CyborgCount - 5);
